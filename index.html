@@ -1347,7 +1347,7 @@
             </div>
             <div id="sheets-init-status" style="font-size:12px;color:var(--muted)"></div>
             <div id="sheets-sync-row" style="display:none;gap:10px;align-items:center;flex-wrap:wrap">
-              <button class="btn btn-primary" onclick="sheetsPushAll()">⬆ Push all data to Sheets</button>
+              <button class="btn btn-primary" onclick="sheetsPushAll(false)">⬆ Push all data to Sheets</button>
               <button class="btn btn-ghost"   onclick="sheetsPullAll()">⬇ Pull data from Sheets</button>
               <span style="font-size:11px;color:var(--muted)" id="sheets-last-sync">Never synced</span>
             </div>
@@ -2818,6 +2818,7 @@ function saveCategory() {
   renderSettingsCategories();
   populateCategoryDropdown();
   render();
+  autoSync();
   showToast(id ? 'Category updated ✓' : 'Category added ✓');
 }
 
@@ -2828,6 +2829,7 @@ function deleteCategory() {
   renderSettingsCategories();
   populateCategoryDropdown();
   render();
+  autoSync();
   showToast('Category deleted');
 }
 
@@ -2934,6 +2936,7 @@ function saveRecurring() {
   }
   closeModal('add-recurring');
   renderSettingsRecurring();
+  autoSync();
   showToast(id ? 'Recurring updated ✓' : 'Recurring added ✓');
 }
 
@@ -2942,6 +2945,7 @@ function deleteRecurring() {
   state.recurringRules = state.recurringRules.filter(r=>r.id!==id);
   closeModal('add-recurring');
   renderSettingsRecurring();
+  autoSync();
   showToast('Recurring deleted');
 }
 
@@ -2996,6 +3000,7 @@ function saveAccount() {
   closeModal('add-account');
   renderSettingsAccounts();
   populateAccountDropdown();
+  autoSync();
   showToast(id ? 'Account updated ✓' : 'Account added ✓');
 }
 
@@ -3005,6 +3010,7 @@ function deleteAccount() {
   state.accounts          = state.accounts.filter(a=>a.id!==id);
   closeModal('add-account');
   renderSettingsAccounts();
+  autoSync();
   showToast('Account deleted');
 }
 
@@ -3413,16 +3419,22 @@ const gs = {
 };
 
 // ── Init on page load ──
-function initSheetsFromStorage() {
+async function initSheetsFromStorage() {
   const clientId = localStorage.getItem('fb_client_id');
   const ssId     = localStorage.getItem('fb_spreadsheet_id');
   const token    = localStorage.getItem('fb_access_token');
   const expiry   = parseInt(localStorage.getItem('fb_token_expiry')||'0');
 
-  if (clientId) document.getElementById('sheets-client-id').value = clientId;
-  if (ssId)     { gs.spreadsheetId = ssId; document.getElementById('sheets-spreadsheet-id').value = ssId; }
+  if (clientId) {
+    const el = document.getElementById('sheets-client-id');
+    if (el) el.value = clientId;
+  }
+  if (ssId) {
+    gs.spreadsheetId = ssId;
+    const el = document.getElementById('sheets-spreadsheet-id');
+    if (el) el.value = ssId;
+  }
 
-  // Show origin
   const od = document.getElementById('origin-display');
   if (od) od.textContent = location.origin;
 
@@ -3431,9 +3443,11 @@ function initSheetsFromStorage() {
     gs.connected   = true;
     updateSheetsUI(true);
     loadGisClient(clientId);
+    return true;
   } else if (clientId) {
     loadGisClient(clientId);
   }
+  return false;
 }
 
 function loadGisClient(clientId) {
@@ -3629,22 +3643,21 @@ function stateToRows() {
 }
 
 // ── Push all data ──
-async function sheetsPushAll() {
+async function sheetsPushAll(silent = false) {
   if (!gs.connected || !gs.spreadsheetId) {
-    showToast('Not connected to Google Sheets'); return;
+    if (!silent) showToast('Not connected to Google Sheets');
+    return;
   }
   try {
-    showToast('Syncing to Sheets…');
+    if (!silent) showToast('Syncing to Sheets…');
     const rows = stateToRows();
     const data = SHEET_NAMES.map(name => ({
       range: `${name}!A2`,
-      values: rows[name],
+      values: rows[name] || [],
     }));
-    // Clear existing data first
     await sheetsRequest('POST', `/${gs.spreadsheetId}/values:batchClear`, {
       ranges: SHEET_NAMES.map(n => `${n}!A2:Z10000`),
     });
-    // Write new data
     if (data.some(d=>d.values.length)) {
       await sheetsRequest('POST', `/${gs.spreadsheetId}/values:batchUpdate`, {
         valueInputOption: 'RAW',
@@ -3654,9 +3667,13 @@ async function sheetsPushAll() {
     const now = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
     const el  = document.getElementById('sheets-last-sync');
     if (el) el.textContent = `Last pushed: ${now}`;
-    showToast('Data pushed to Sheets ✓');
+    // Update sidebar status
+    const statusEl = document.getElementById('sheets-status');
+    if (statusEl) { statusEl.textContent = `Saved ${now}`; statusEl.style.color = 'var(--green)'; }
+    if (!silent) showToast('Data pushed to Sheets ✓');
   } catch(e) {
     showToast('Sync error: ' + e.message);
+    console.error('Sheets push error:', e);
   }
 }
 
@@ -3754,22 +3771,8 @@ async function sheetsPullAll() {
   }
 }
 
-// ── Auto-push after any state change ──
-// Wrap the core data-mutating functions to auto-sync
-function autoSync() {
-  if (gs.connected && gs.spreadsheetId) {
-    // Debounce — wait 1.5s after last change before pushing
-    clearTimeout(gs._syncTimer);
-    gs._syncTimer = setTimeout(sheetsPushAll, 1500);
-  }
-}
-
-
 // ─────────────────────────────────────────────
 //  LOCAL STORAGE PERSISTENCE
-//  Saves user customisations so they survive
-//  new deployments. Transactions / income are
-//  saved too so data isn't lost on refresh.
 // ─────────────────────────────────────────────
 
 const PERSIST_KEYS = [
@@ -3783,7 +3786,7 @@ function saveStateToLocal() {
     const snapshot = {};
     PERSIST_KEYS.forEach(k => { snapshot[k] = state[k]; });
     localStorage.setItem('fb_state', JSON.stringify(snapshot));
-  } catch(e) { console.warn('Could not save state:', e); }
+  } catch(e) { console.warn('Could not save state locally:', e); }
 }
 
 function loadStateFromLocal() {
@@ -3796,26 +3799,44 @@ function loadStateFromLocal() {
     });
     return true;
   } catch(e) {
-    console.warn('Could not load state:', e);
+    console.warn('Could not load local state:', e);
     return false;
   }
 }
 
-// Patch autoSync to also save locally on every change
-const _origAutoSync = autoSync;
+// ─────────────────────────────────────────────
+//  SYNC — called after every data mutation
+//  1. Always saves to localStorage immediately
+//  2. If connected to Sheets, pushes immediately
+// ─────────────────────────────────────────────
 function autoSync() {
   saveStateToLocal();
-  _origAutoSync();
+  if (gs.connected && gs.spreadsheetId) {
+    sheetsPushAll(true); // silent — no toast on auto-save
+  }
 }
 
 // ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
-loadStateFromLocal(); // load saved customisations before first render
-render();
-initSheetsFromStorage();
+async function init() {
+  // 1. Load localStorage as immediate fallback
+  loadStateFromLocal();
+  render();
+
+  // 2. Init Google auth from stored credentials
+  await initSheetsFromStorage();
+
+  // 3. If already connected to Sheets, pull latest data
+  if (gs.connected && gs.spreadsheetId) {
+    showToast('Loading data from Google Sheets…');
+    await sheetsPullAll();
+  }
+}
+
+init();
+
 
 </script>
 </body>
 </html>
-
