@@ -1250,7 +1250,7 @@
             <div style="font-size:15px;font-weight:600">Recurring Transactions</div>
             <div style="font-size:12px;color:var(--muted);margin-top:3px">Auto-posted each month on their designated day. You can override or skip any individual month.</div>
           </div>
-          <button class="btn btn-primary" onclick="openModal('add-recurring')">+ Add Recurring</button>
+          <button class="btn btn-primary" onclick="openAddRecurring()">+ Add Recurring</button>
         </div>
 
         <div class="section">
@@ -1273,7 +1273,7 @@
             <div style="font-size:15px;font-weight:600">Financial Accounts</div>
             <div style="font-size:12px;color:var(--muted);margin-top:3px">Accounts tracked in the Financial Position view. Assets and liabilities.</div>
           </div>
-          <button class="btn btn-primary" onclick="openModal('add-account')">+ Add Account</button>
+          <button class="btn btn-primary" onclick="openAddAccount()">+ Add Account</button>
         </div>
 
         <div class="section">
@@ -2725,7 +2725,7 @@ function renderSettingsCategories() {
 
 function updateCategoryBudget(id, val) {
   const cat = state.categories.find(c=>c.id===id);
-  if (cat) cat.defaultBudget = parseFloat(val)||0;
+  if (cat) { cat.defaultBudget = parseFloat(val)||0; saveStateToLocal(); autoSync(); }
   render();
   renderSettingsCategories();
 }
@@ -3180,32 +3180,30 @@ function openModal(name) {
     if (!document.getElementById('cat-edit-id').value) openAddCategory(); else _origOpenModal(name);
     return;
   }
-  if (name==='add-recurring') {
-    if (!document.getElementById('rec-edit-id').value) {
-      document.getElementById('rec-modal-title').textContent = 'Add Recurring Transaction';
-      document.getElementById('rec-edit-id').value = '';
-      document.getElementById('rec-desc').value = '';
-      document.getElementById('rec-amount').value = '';
-      document.getElementById('rec-day').value = '1';
-      document.getElementById('rec-active').value = 'true';
-      document.getElementById('rec-delete-btn').style.display = 'none';
-      document.getElementById('rec-account-group').style.display = 'none';
-      populateRecCatDropdown('');
-    }
-    _origOpenModal(name); return;
-  }
-  if (name==='add-account') {
-    if (!document.getElementById('acct-edit-id').value) {
-      document.getElementById('acct-modal-title').textContent = 'Add Account';
-      document.getElementById('acct-edit-id').value = '';
-      document.getElementById('acct-name').value = '';
-      document.getElementById('acct-icon').value = '';
-      document.getElementById('acct-type').value = 'investment';
-      document.getElementById('acct-delete-btn').style.display = 'none';
-    }
-    _origOpenModal(name); return;
-  }
   _origOpenModal(name);
+}
+
+function openAddRecurring() {
+  document.getElementById('rec-modal-title').textContent = 'Add Recurring Transaction';
+  document.getElementById('rec-edit-id').value   = '';
+  document.getElementById('rec-desc').value      = '';
+  document.getElementById('rec-amount').value    = '';
+  document.getElementById('rec-day').value       = '1';
+  document.getElementById('rec-active').value    = 'true';
+  document.getElementById('rec-delete-btn').style.display  = 'none';
+  document.getElementById('rec-account-group').style.display = 'none';
+  populateRecCatDropdown('');
+  _origOpenModal('add-recurring');
+}
+
+function openAddAccount() {
+  document.getElementById('acct-modal-title').textContent = 'Add Account';
+  document.getElementById('acct-edit-id').value = '';
+  document.getElementById('acct-name').value    = '';
+  document.getElementById('acct-icon').value    = '';
+  document.getElementById('acct-type').value    = 'investment';
+  document.getElementById('acct-delete-btn').style.display = 'none';
+  _origOpenModal('add-account');
 }
 
 // ─────────────────────────────────────────────
@@ -3766,11 +3764,58 @@ function autoSync() {
   }
 }
 
+
+// ─────────────────────────────────────────────
+//  LOCAL STORAGE PERSISTENCE
+//  Saves user customisations so they survive
+//  new deployments. Transactions / income are
+//  saved too so data isn't lost on refresh.
+// ─────────────────────────────────────────────
+
+const PERSIST_KEYS = [
+  'categories', 'incomeCategories', 'recurringIncome',
+  'recurringRules', 'financialAccounts', 'accounts',
+  'budgetOverrides', 'transactions', 'income', 'accountEntries',
+];
+
+function saveStateToLocal() {
+  try {
+    const snapshot = {};
+    PERSIST_KEYS.forEach(k => { snapshot[k] = state[k]; });
+    localStorage.setItem('fb_state', JSON.stringify(snapshot));
+  } catch(e) { console.warn('Could not save state:', e); }
+}
+
+function loadStateFromLocal() {
+  try {
+    const raw = localStorage.getItem('fb_state');
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    PERSIST_KEYS.forEach(k => {
+      if (saved[k] !== undefined) state[k] = saved[k];
+    });
+    return true;
+  } catch(e) {
+    console.warn('Could not load state:', e);
+    return false;
+  }
+}
+
+// Patch autoSync to also save locally on every change
+const _origAutoSync = autoSync;
+function autoSync() {
+  saveStateToLocal();
+  _origAutoSync();
+}
+
 // ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
+loadStateFromLocal(); // load saved customisations before first render
 render();
 initSheetsFromStorage();
+
 </script>
 </body>
 </html>
+
