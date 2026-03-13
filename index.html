@@ -1147,7 +1147,8 @@
       <div style="font-size:15px;font-weight:600;letter-spacing:-0.3px">Settings</div>
       <div class="topbar-actions">
         <div class="tab-group">
-          <button class="tab-btn active" id="stab-categories" onclick="switchSettingsTab('categories')">Categories</button>
+          <button class="tab-btn active" id="stab-categories" onclick="switchSettingsTab('categories')">Spending</button>
+          <button class="tab-btn" id="stab-income"      onclick="switchSettingsTab('income')">Income</button>
           <button class="tab-btn" id="stab-recurring"   onclick="switchSettingsTab('recurring')">Recurring</button>
           <button class="tab-btn" id="stab-accounts"    onclick="switchSettingsTab('accounts')">Accounts</button>
           <button class="tab-btn" id="stab-sheets"      onclick="switchSettingsTab('sheets')">Google Sheets</button>
@@ -1164,7 +1165,7 @@
             <div style="font-size:15px;font-weight:600">Categories & Budgets</div>
             <div style="font-size:12px;color:var(--muted);margin-top:3px">Define spending categories and their default monthly budgets. Investment categories are linked to accounts.</div>
           </div>
-          <button class="btn btn-primary" onclick="openModal('add-category')">+ Add Category</button>
+          <button class="btn btn-primary" onclick="openAddCategory()">+ Add Category</button>
         </div>
 
         <!-- Spending categories -->
@@ -1201,7 +1202,49 @@
       </div>
 
       <!-- ── RECURRING TAB ── -->
-      <div id="stab-panel-recurring" style="display:none">
+      <!-- ── INCOME TAB ── -->
+      <div id="stab-panel-income" style="display:none">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Income Categories</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">Define your income sources and their expected monthly amounts.</div>
+          </div>
+          <button class="btn btn-primary" onclick="openAddIncomeCategory()">+ Add Category</button>
+        </div>
+
+        <div class="section" style="margin-bottom:16px">
+          <div class="settings-table-header" style="grid-template-columns:36px 1fr 160px 160px 80px">
+            <div class="th"></div>
+            <div class="th">Source</div>
+            <div class="th right">Expected / month</div>
+            <div class="th right">Annual Expected</div>
+            <div class="th"></div>
+          </div>
+          <div id="settings-income-list"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; margin-top:24px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Recurring Income</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px">Auto-posted income entries each month on their designated day.</div>
+          </div>
+          <button class="btn btn-primary" onclick="openAddRecurringIncome()">+ Add Recurring</button>
+        </div>
+
+        <div class="section">
+          <div class="settings-table-header" style="grid-template-columns:1fr 160px 100px 100px 80px 80px">
+            <div class="th">Description</div>
+            <div class="th">Category</div>
+            <div class="th right">Amount</div>
+            <div class="th">Day</div>
+            <div class="th">Status</div>
+            <div class="th"></div>
+          </div>
+          <div id="settings-recurring-income-list"></div>
+        </div>
+      </div>
+
+      <!-- ── RECURRING TAB ── -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
           <div>
             <div style="font-size:15px;font-weight:600">Recurring Transactions</div>
@@ -1351,6 +1394,75 @@
       <button class="delete-btn" id="cat-delete-btn" style="display:none" onclick="deleteCategory()">🗑 Delete</button>
       <button class="btn btn-ghost" onclick="closeModal('add-category')">Cancel</button>
       <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD / EDIT INCOME CATEGORY MODAL ── -->
+<div class="modal-overlay" id="modal-add-income-category">
+  <div class="modal">
+    <div class="modal-title" id="inc-cat-modal-title">Add Income Category</div>
+    <input type="hidden" id="inc-cat-edit-id"/>
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="inc-cat-name" placeholder="e.g. Salary, Freelance…"/>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Icon</label>
+        <input class="form-input" type="text" id="inc-cat-icon" placeholder="💼" maxlength="2"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Expected Monthly Amount (€)</label>
+      <input class="form-input" type="number" id="inc-cat-planned" placeholder="0" step="1"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Colour</label>
+      <div class="color-swatches" id="inc-cat-color-swatches"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="delete-btn" id="inc-cat-delete-btn" style="display:none" onclick="deleteIncomeCategory()">🗑 Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal('add-income-category')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveIncomeCategory()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD / EDIT RECURRING INCOME MODAL ── -->
+<div class="modal-overlay" id="modal-add-recurring-income">
+  <div class="modal">
+    <div class="modal-title" id="rec-inc-modal-title">Add Recurring Income</div>
+    <input type="hidden" id="rec-inc-edit-id"/>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input class="form-input" type="text" id="rec-inc-desc" placeholder="e.g. Monthly salary"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Amount (€)</label>
+        <input class="form-input" type="number" id="rec-inc-amount" placeholder="0.00" step="0.01"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Day of month</label>
+        <input class="form-input" type="number" id="rec-inc-day" placeholder="1" min="1" max="28"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Income Category</label>
+      <select class="form-select" id="rec-inc-category"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-select" id="rec-inc-active">
+        <option value="true">Active</option>
+        <option value="false">Paused</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="delete-btn" id="rec-inc-delete-btn" style="display:none" onclick="deleteRecurringIncome()">🗑 Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal('add-recurring-income')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRecurringIncome()">Save</button>
     </div>
   </div>
 </div>
@@ -1649,16 +1761,30 @@ const state = {
     { id:'r7', desc:'Gym membership', amount:45,   category:'leisure',    day:10, active:false },
   ],
 
+  // ── INCOME CATEGORIES ──
+  incomeCategories: [
+    { id:'inc-salary1',   name:'Salary – Parent 1',  icon:'💼', color:'#EBF5EF', defaultPlanned:2800 },
+    { id:'inc-salary2',   name:'Salary – Parent 2',  icon:'💼', color:'#EFF6FF', defaultPlanned:1700 },
+    { id:'inc-freelance', name:'Freelance',           icon:'🖥️', color:'#FEF3C7', defaultPlanned:0 },
+    { id:'inc-other',     name:'Other Income',        icon:'💰', color:'#F0FDF4', defaultPlanned:0 },
+  ],
+
+  // ── RECURRING INCOME ──
+  recurringIncome: [
+    { id:'ri1', desc:'Salary – Parent 1', amount:2800, categoryId:'inc-salary1', day:1,  active:true },
+    { id:'ri2', desc:'Salary – Parent 2', amount:1700, categoryId:'inc-salary2', day:1,  active:true },
+  ],
+
   income: [
     // Jan
-    { id:101, date:'2026-01-01', source:'Salary – Parent 1', actual:2800, planned:2800 },
-    { id:102, date:'2026-01-01', source:'Salary – Parent 2', actual:1700, planned:1700 },
+    { id:101, date:'2026-01-01', source:'Salary – Parent 1', categoryId:'inc-salary1', actual:2800, planned:2800 },
+    { id:102, date:'2026-01-01', source:'Salary – Parent 2', categoryId:'inc-salary2', actual:1700, planned:1700 },
     // Feb
-    { id:103, date:'2026-02-01', source:'Salary – Parent 1', actual:2800, planned:2800 },
-    { id:104, date:'2026-02-01', source:'Salary – Parent 2', actual:1700, planned:1700 },
+    { id:103, date:'2026-02-01', source:'Salary – Parent 1', categoryId:'inc-salary1', actual:2800, planned:2800 },
+    { id:104, date:'2026-02-01', source:'Salary – Parent 2', categoryId:'inc-salary2', actual:1700, planned:1700 },
     // Mar
-    { id:1,   date:'2026-03-01', source:'Salary – Parent 1', actual:2800, planned:2800 },
-    { id:2,   date:'2026-03-01', source:'Salary – Parent 2', actual:1550, planned:1700 },
+    { id:1,   date:'2026-03-01', source:'Salary – Parent 1', categoryId:'inc-salary1', actual:2800, planned:2800 },
+    { id:2,   date:'2026-03-01', source:'Salary – Parent 2', categoryId:'inc-salary2', actual:1550, planned:1700 },
   ],
 
   transactions: [
@@ -2524,15 +2650,20 @@ const COLOR_SWATCHES = ['#FEF3C7','#EFF6FF','#F0FDF4','#FDF4FF','#FFF7ED',
 
 function initSettings() {
   renderSettingsCategories();
+  renderSettingsIncomeCategories();
+  renderSettingsRecurringIncome();
   renderSettingsRecurring();
   renderSettingsAccounts();
 }
 
 function switchSettingsTab(tab) {
-  ['categories','recurring','accounts','sheets'].forEach(t => {
-    document.getElementById(`stab-${t}`).classList.toggle('active', t===tab);
-    document.getElementById(`stab-panel-${t}`).style.display = t===tab ? 'block' : 'none';
+  ['categories','income','recurring','accounts','sheets'].forEach(t => {
+    const btn   = document.getElementById(`stab-${t}`);
+    const panel = document.getElementById(`stab-panel-${t}`);
+    if (btn)   btn.classList.toggle('active', t===tab);
+    if (panel) panel.style.display = t===tab ? 'block' : 'none';
   });
+  if (tab==='income')  { renderSettingsIncomeCategories(); renderSettingsRecurringIncome(); }
   if (tab==='sheets') {
     const od = document.getElementById('origin-display');
     if (od) od.textContent = location.origin;
@@ -2606,17 +2737,19 @@ function onCatTypeChange() {
 }
 
 function openAddCategory() {
-  document.getElementById('cat-modal-title').textContent = 'Add Category';
-  document.getElementById('cat-edit-id').value = '';
-  document.getElementById('cat-name').value   = '';
-  document.getElementById('cat-icon').value   = '';
-  document.getElementById('cat-type').value   = 'spending';
-  document.getElementById('cat-budget').value = '';
-  document.getElementById('cat-delete-btn').style.display = 'none';
-  onCatTypeChange();
-  renderColorSwatches('cat', null);
-  populateCatAccountLink();
-  openModal('add-category');
+  try {
+    document.getElementById('cat-modal-title').textContent = 'Add Category';
+    document.getElementById('cat-edit-id').value = '';
+    document.getElementById('cat-name').value    = '';
+    document.getElementById('cat-icon').value    = '';
+    document.getElementById('cat-type').value    = 'spending';
+    document.getElementById('cat-budget').value  = '';
+    document.getElementById('cat-delete-btn').style.display = 'none';
+    onCatTypeChange();
+    try { renderColorSwatches('cat', null); } catch(e) { console.warn('swatches error', e); }
+    try { populateCatAccountLink(); }        catch(e) { console.warn('accountlink error', e); }
+  } catch(e) { console.warn('openAddCategory error', e); }
+  document.getElementById('modal-add-category').classList.add('open');
 }
 
 function openEditCategory(id) {
@@ -2630,9 +2763,9 @@ function openEditCategory(id) {
   document.getElementById('cat-budget').value   = c.defaultBudget||0;
   document.getElementById('cat-delete-btn').style.display = 'inline-flex';
   onCatTypeChange();
-  renderColorSwatches('cat', c.color);
-  populateCatAccountLink(c.accountId);
-  openModal('add-category');
+  try { renderColorSwatches('cat', c.color); }  catch(e) { console.warn('swatches error', e); }
+  try { populateCatAccountLink(c.accountId); }  catch(e) { console.warn('accountlink error', e); }
+  document.getElementById('modal-add-category').classList.add('open');
 }
 
 function populateCatAccountLink(selected) {
@@ -2875,6 +3008,172 @@ function deleteAccount() {
   showToast('Account deleted');
 }
 
+// ─────────────────────────────────────────────
+//  INCOME CATEGORIES & RECURRING INCOME
+// ─────────────────────────────────────────────
+
+function renderSettingsIncomeCategories() {
+  const el = document.getElementById('settings-income-list');
+  if (!el) return;
+  el.innerHTML = (state.incomeCategories||[]).map(c => {
+    const annual = (c.defaultPlanned||0) * 12;
+    return `<div class="settings-row" style="grid-template-columns:36px 1fr 160px 160px 80px">
+      <div class="settings-icon" style="background:${c.color||'var(--bg)'}">${c.icon||'💰'}</div>
+      <div class="settings-name">${c.name}</div>
+      <div class="mono" style="text-align:right;font-size:13px">${fmt(c.defaultPlanned||0)}</div>
+      <div class="mono" style="text-align:right;font-size:13px;color:var(--muted)">${fmt(annual)}</div>
+      <div style="text-align:right">
+        <button class="settings-edit-btn" onclick="openEditIncomeCategory('${c.id}')">✏️</button>
+      </div>
+    </div>`;
+  }).join('') || '<div style="padding:16px;color:var(--muted);font-size:13px">No income categories yet.</div>';
+}
+
+function renderSettingsRecurringIncome() {
+  const el = document.getElementById('settings-recurring-income-list');
+  if (!el) return;
+  el.innerHTML = (state.recurringIncome||[]).map(r => {
+    const cat = (state.incomeCategories||[]).find(c=>c.id===r.categoryId);
+    const badge = r.active
+      ? `<span class="badge badge-green ac-badge">Active</span>`
+      : `<span class="badge badge-amber ac-badge">Paused</span>`;
+    return `<div class="settings-row" style="grid-template-columns:1fr 160px 100px 100px 80px 80px">
+      <div class="settings-name">${r.desc}</div>
+      <div><span class="badge badge-blue ac-badge">${cat?.name||r.categoryId}</span></div>
+      <div class="mono" style="text-align:right;font-size:13px">+${fmt(r.amount)}</div>
+      <div style="font-size:12px;color:var(--muted)">Day ${r.day}</div>
+      <div>${badge}</div>
+      <div style="text-align:right">
+        <button class="settings-edit-btn" onclick="openEditRecurringIncome('${r.id}')">✏️</button>
+      </div>
+    </div>`;
+  }).join('') || '<div style="padding:16px;color:var(--muted);font-size:13px">No recurring income yet.</div>';
+}
+
+function openAddIncomeCategory() {
+  document.getElementById('inc-cat-modal-title').textContent = 'Add Income Category';
+  document.getElementById('inc-cat-edit-id').value   = '';
+  document.getElementById('inc-cat-name').value      = '';
+  document.getElementById('inc-cat-icon').value      = '';
+  document.getElementById('inc-cat-planned').value   = '';
+  document.getElementById('inc-cat-delete-btn').style.display = 'none';
+  renderColorSwatches('inc-cat', null);
+  document.getElementById('modal-add-income-category').classList.add('open');
+}
+
+function openEditIncomeCategory(id) {
+  const c = (state.incomeCategories||[]).find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('inc-cat-modal-title').textContent = 'Edit Income Category';
+  document.getElementById('inc-cat-edit-id').value   = id;
+  document.getElementById('inc-cat-name').value      = c.name;
+  document.getElementById('inc-cat-icon').value      = c.icon||'';
+  document.getElementById('inc-cat-planned').value   = c.defaultPlanned||0;
+  document.getElementById('inc-cat-delete-btn').style.display = 'inline-flex';
+  renderColorSwatches('inc-cat', c.color);
+  document.getElementById('modal-add-income-category').classList.add('open');
+}
+
+function saveIncomeCategory() {
+  const id      = document.getElementById('inc-cat-edit-id').value;
+  const name    = document.getElementById('inc-cat-name').value.trim();
+  const icon    = document.getElementById('inc-cat-icon').value.trim() || '💰';
+  const planned = parseFloat(document.getElementById('inc-cat-planned').value)||0;
+  const color   = document.querySelector('#inc-cat-color-swatches .swatch.selected')?.dataset.color || '#EBF5EF';
+
+  if (!name) { showToast('Please enter a category name'); return; }
+
+  if (id) {
+    const idx = state.incomeCategories.findIndex(c=>c.id===id);
+    if (idx>-1) Object.assign(state.incomeCategories[idx], { name, icon, defaultPlanned: planned, color });
+  } else {
+    const newId = 'inc-' + name.toLowerCase().replace(/\s+/g,'-') + '-' + Date.now();
+    if (!state.incomeCategories) state.incomeCategories = [];
+    state.incomeCategories.push({ id: newId, name, icon, defaultPlanned: planned, color });
+  }
+  closeModal('add-income-category');
+  renderSettingsIncomeCategories();
+  autoSync();
+  showToast(id ? 'Income category updated ✓' : 'Income category added ✓');
+}
+
+function deleteIncomeCategory() {
+  const id = document.getElementById('inc-cat-edit-id').value;
+  state.incomeCategories = (state.incomeCategories||[]).filter(c=>c.id!==id);
+  closeModal('add-income-category');
+  renderSettingsIncomeCategories();
+  autoSync();
+  showToast('Income category deleted');
+}
+
+function populateRecIncCategoryDropdown(selectedId) {
+  const sel = document.getElementById('rec-inc-category');
+  if (!sel) return;
+  sel.innerHTML = (state.incomeCategories||[]).map(c =>
+    `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.icon||''} ${c.name}</option>`
+  ).join('');
+}
+
+function openAddRecurringIncome() {
+  document.getElementById('rec-inc-modal-title').textContent = 'Add Recurring Income';
+  document.getElementById('rec-inc-edit-id').value   = '';
+  document.getElementById('rec-inc-desc').value      = '';
+  document.getElementById('rec-inc-amount').value    = '';
+  document.getElementById('rec-inc-day').value       = '1';
+  document.getElementById('rec-inc-active').value    = 'true';
+  document.getElementById('rec-inc-delete-btn').style.display = 'none';
+  populateRecIncCategoryDropdown('');
+  document.getElementById('modal-add-recurring-income').classList.add('open');
+}
+
+function openEditRecurringIncome(id) {
+  const r = (state.recurringIncome||[]).find(x=>x.id===id);
+  if (!r) return;
+  document.getElementById('rec-inc-modal-title').textContent = 'Edit Recurring Income';
+  document.getElementById('rec-inc-edit-id').value   = id;
+  document.getElementById('rec-inc-desc').value      = r.desc;
+  document.getElementById('rec-inc-amount').value    = r.amount;
+  document.getElementById('rec-inc-day').value       = r.day;
+  document.getElementById('rec-inc-active').value    = String(r.active);
+  document.getElementById('rec-inc-delete-btn').style.display = 'inline-flex';
+  populateRecIncCategoryDropdown(r.categoryId);
+  document.getElementById('modal-add-recurring-income').classList.add('open');
+}
+
+function saveRecurringIncome() {
+  const id         = document.getElementById('rec-inc-edit-id').value;
+  const desc       = document.getElementById('rec-inc-desc').value.trim();
+  const amount     = parseFloat(document.getElementById('rec-inc-amount').value)||0;
+  const day        = parseInt(document.getElementById('rec-inc-day').value)||1;
+  const categoryId = document.getElementById('rec-inc-category').value;
+  const active     = document.getElementById('rec-inc-active').value === 'true';
+
+  if (!desc)   { showToast('Please enter a description'); return; }
+  if (!amount) { showToast('Please enter an amount');     return; }
+
+  if (!state.recurringIncome) state.recurringIncome = [];
+
+  if (id) {
+    const idx = state.recurringIncome.findIndex(r=>r.id===id);
+    if (idx>-1) Object.assign(state.recurringIncome[idx], { desc, amount, day, categoryId, active });
+  } else {
+    state.recurringIncome.push({ id: 'ri-'+Date.now(), desc, amount, day, categoryId, active });
+  }
+  closeModal('add-recurring-income');
+  renderSettingsRecurringIncome();
+  autoSync();
+  showToast(id ? 'Recurring income updated ✓' : 'Recurring income added ✓');
+}
+
+function deleteRecurringIncome() {
+  const id = document.getElementById('rec-inc-edit-id').value;
+  state.recurringIncome = (state.recurringIncome||[]).filter(r=>r.id!==id);
+  closeModal('add-recurring-income');
+  renderSettingsRecurringIncome();
+  autoSync();
+  showToast('Recurring income deleted');
+}
+
 // Override openModal to handle settings-specific logic
 function openModal(name) {
   if (name==='add-category') {
@@ -3094,16 +3393,18 @@ function switchGridTab(tab) {
 //  GOOGLE SHEETS INTEGRATION
 // ─────────────────────────────────────────────
 const SHEETS_SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
-const SHEET_NAMES   = ['Transactions','Income','RecurringRules','BudgetConfig','Accounts','AccountEntries'];
+const SHEET_NAMES   = ['Transactions','Income','RecurringRules','BudgetConfig','Accounts','AccountEntries','IncomeCategories','RecurringIncome'];
 
 // Column headers per sheet
 const SHEET_HEADERS = {
-  Transactions:   ['id','date','amount','category','desc','recurring','accountId'],
-  Income:         ['id','date','source','actual','planned'],
-  RecurringRules: ['id','desc','amount','category','day','active','accountId'],
-  BudgetConfig:   ['id','name','icon','type','defaultBudget','color','accountId'],
-  Accounts:       ['id','name','icon','type','color'],
-  AccountEntries: ['id','date','accountId','type','amount','desc','sourceId'],
+  Transactions:     ['id','date','amount','category','desc','recurring','accountId'],
+  Income:           ['id','date','source','categoryId','actual','planned'],
+  RecurringRules:   ['id','desc','amount','category','day','active','accountId'],
+  BudgetConfig:     ['id','name','icon','type','defaultBudget','color','accountId'],
+  Accounts:         ['id','name','icon','type','color'],
+  AccountEntries:   ['id','date','accountId','type','amount','desc','sourceId'],
+  IncomeCategories: ['id','name','icon','defaultPlanned','color'],
+  RecurringIncome:  ['id','desc','amount','categoryId','day','active'],
 };
 
 const gs = {
@@ -3306,7 +3607,13 @@ function stateToRows() {
     [t.id, t.date, t.amount, t.category, t.desc, t.recurring||false, t.accountId||'']);
 
   rows.Income = state.income.map(i =>
-    [i.id, i.date, i.source, i.actual, i.planned]);
+    [i.id, i.date, i.source, i.categoryId||'', i.actual, i.planned]);
+
+  rows.IncomeCategories = (state.incomeCategories||[]).map(c =>
+    [c.id, c.name, c.icon||'', c.defaultPlanned||0, c.color||'']);
+
+  rows.RecurringIncome = (state.recurringIncome||[]).map(r =>
+    [r.id, r.desc, r.amount, r.categoryId||'', r.day, r.active]);
 
   rows.RecurringRules = state.recurringRules.map(r =>
     [r.id, r.desc, r.amount, r.category, r.day, r.active, r.accountId||'']);
@@ -3385,8 +3692,23 @@ async function sheetsPullAll() {
     // Parse Income
     if (sheets.Income?.length) {
       state.income = sheets.Income.map(r => ({
-        id: r[0], date: r[1], source: r[2],
-        actual: parseFloat(r[3])||0, planned: parseFloat(r[4])||0,
+        id: r[0], date: r[1], source: r[2], categoryId: r[3]||undefined,
+        actual: parseFloat(r[4])||0, planned: parseFloat(r[5])||0,
+      }));
+    }
+    // Parse IncomeCategories
+    if (sheets.IncomeCategories?.length) {
+      state.incomeCategories = sheets.IncomeCategories.map(r => ({
+        id: r[0], name: r[1], icon: r[2]||'💰',
+        defaultPlanned: parseFloat(r[3])||0, color: r[4]||'#EBF5EF',
+      }));
+    }
+    // Parse RecurringIncome
+    if (sheets.RecurringIncome?.length) {
+      state.recurringIncome = sheets.RecurringIncome.map(r => ({
+        id: r[0], desc: r[1], amount: parseFloat(r[2])||0,
+        categoryId: r[3], day: parseInt(r[4])||1,
+        active: r[5]==='TRUE'||r[5]===true,
       }));
     }
     // Parse RecurringRules
