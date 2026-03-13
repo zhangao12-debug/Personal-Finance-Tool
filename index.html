@@ -1383,8 +1383,8 @@
       <input class="form-input" type="number" id="cat-budget" placeholder="0" step="1"/>
     </div>
     <div class="form-group" id="cat-account-group" style="display:none">
-      <label class="form-label">Linked Account</label>
-      <select class="form-select" id="cat-account-link"></select>
+      <label class="form-label">Linked Accounts <span style="color:var(--muted);font-weight:400">(pick all that apply)</span></label>
+      <div id="cat-account-checkboxes" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:4px 0"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Colour</label>
@@ -1695,9 +1695,9 @@ const state = {
     { id: 'health',     name: 'Health',        icon: '❤️', color: '#FFF1F2', type: 'spending', defaultBudget: 100 },
     { id: 'leisure',    name: 'Leisure',       icon: '🎮', color: '#ECFDF5', type: 'spending', defaultBudget: 150 },
     { id: 'childcare',  name: 'Childcare',     icon: '👶', color: '#EFF6FF', type: 'spending', defaultBudget: 100 },
-    { id: 'invest-pea', name: 'PEA',           icon: '📈', color: '#F0FDF4', type: 'investment', accountId: 'pea',    defaultBudget: 500 },
-    { id: 'invest-cto', name: 'CTO',           icon: '📊', color: '#F0FDF4', type: 'investment', accountId: 'cto',    defaultBudget: 300 },
-    { id: 'invest-liv', name: 'Livret A',      icon: '🏦', color: '#F0FDF4', type: 'investment', accountId: 'livret', defaultBudget: 100 },
+    { id: 'invest-pea', name: 'PEA',           icon: '📈', color: '#F0FDF4', type: 'investment', accountIds: ['pea'],    defaultBudget: 500 },
+    { id: 'invest-cto', name: 'CTO',           icon: '📊', color: '#F0FDF4', type: 'investment', accountIds: ['cto'],    defaultBudget: 300 },
+    { id: 'invest-liv', name: 'Livret A',      icon: '🏦', color: '#F0FDF4', type: 'investment', accountIds: ['livret'], defaultBudget: 100 },
   ],
 
   accounts: [
@@ -2046,10 +2046,20 @@ function showPage(page) {
 function onCategoryChange() {
   const val = document.getElementById('tx-category').value;
   const cat = state.categories.find(c=>c.id===val);
-  document.getElementById('tx-account-group').style.display =
-    cat?.type === 'investment' ? 'block' : 'none';
-  if (cat?.type === 'investment' && cat.accountId) {
-    document.getElementById('tx-account').value = cat.accountId;
+  const isInv = cat?.type === 'investment';
+  document.getElementById('tx-account-group').style.display = isInv ? 'block' : 'none';
+  if (isInv) {
+    const linkedIds = cat.accountIds || (cat.accountId ? [cat.accountId] : []);
+    const sel = document.getElementById('tx-account');
+    // Filter dropdown to only linked accounts, or all investment/savings if none specified
+    const accounts = linkedIds.length
+      ? state.financialAccounts.filter(a => linkedIds.includes(a.id))
+      : state.financialAccounts.filter(a => a.type==='investment'||a.type==='savings');
+    sel.innerHTML = accounts.map(a =>
+      `<option value="${a.id}">${a.icon||'🏦'} ${a.name}</option>`
+    ).join('');
+    // Auto-select if only one option
+    if (accounts.length === 1) sel.value = accounts[0].id;
   }
 }
 
@@ -2263,7 +2273,7 @@ function renderTxLog() {
         </div>
         <div class="txlog-amount">${fmt(t.amount)}</div>
         <div>${typeBadge}</div>
-        <button class="txlog-edit-btn" onclick="openEditTx(${t.id})" title="Edit">✏️</button>
+        <div style="text-align:right"><button class="txlog-edit-btn" onclick="openEditTx('${t.id}')" title="Edit">✏️</button></div>
       </div>`;
     }).join('');
   }
@@ -2293,29 +2303,44 @@ function clearTxFilters() {
 }
 
 function openEditTx(id) {
-  const t = state.transactions.find(tx=>tx.id===id);
+  const t = state.transactions.find(tx => String(tx.id) === String(id));
   if (!t) return;
   document.getElementById('edit-tx-id').value     = id;
   document.getElementById('edit-tx-date').value   = t.date;
-  document.getElementById('edit-tx-amount').value = t.amount;
-  document.getElementById('edit-tx-category').value = t.category;
-  document.getElementById('edit-tx-desc').value   = t.desc;
-  const cat = state.categories.find(c=>c.id===t.category);
+  document.getElementById('edit-tx-amount').value    = t.amount;
+  document.getElementById('edit-tx-category').value  = t.category;
+  document.getElementById('edit-tx-desc').value      = t.desc;
+  const cat   = state.categories.find(c=>c.id===t.category);
   const isInv = cat?.type==='investment';
   document.getElementById('edit-tx-account-group').style.display = isInv ? 'block' : 'none';
-  if (isInv && t.accountId) document.getElementById('edit-tx-account').value = t.accountId;
+  if (isInv) {
+    populateEditTxAccountDropdown(cat, t.accountId);
+  }
   document.getElementById('modal-edit-transaction').classList.add('open');
+}
+
+function populateEditTxAccountDropdown(cat, selectedId) {
+  const linkedIds = cat?.accountIds || (cat?.accountId ? [cat.accountId] : []);
+  const accounts  = linkedIds.length
+    ? state.financialAccounts.filter(a => linkedIds.includes(a.id))
+    : state.financialAccounts.filter(a => a.type==='investment'||a.type==='savings');
+  const sel = document.getElementById('edit-tx-account');
+  sel.innerHTML = accounts.map(a =>
+    `<option value="${a.id}" ${a.id===selectedId?'selected':''}>${a.icon||'🏦'} ${a.name}</option>`
+  ).join('');
 }
 
 function onEditCategoryChange() {
   const val = document.getElementById('edit-tx-category').value;
   const cat = state.categories.find(c=>c.id===val);
-  document.getElementById('edit-tx-account-group').style.display = cat?.type==='investment' ? 'block' : 'none';
+  const isInv = cat?.type==='investment';
+  document.getElementById('edit-tx-account-group').style.display = isInv ? 'block' : 'none';
+  if (isInv) populateEditTxAccountDropdown(cat, null);
 }
 
 function saveEditTransaction() {
-  const id     = parseInt(document.getElementById('edit-tx-id').value);
-  const idx    = state.transactions.findIndex(t=>t.id===id);
+  const id  = document.getElementById('edit-tx-id').value;
+  const idx = state.transactions.findIndex(t => String(t.id) === String(id));
   if (idx===-1) return;
   state.transactions[idx] = {
     ...state.transactions[idx],
@@ -2333,8 +2358,8 @@ function saveEditTransaction() {
 }
 
 function deleteTransaction() {
-  const id  = parseInt(document.getElementById('edit-tx-id').value);
-  state.transactions = state.transactions.filter(t=>t.id!==id);
+  const id = document.getElementById('edit-tx-id').value;
+  state.transactions = state.transactions.filter(t => String(t.id) !== String(id));
   closeModal('edit-transaction');
   render();
   autoSync();
@@ -2747,7 +2772,7 @@ function openAddCategory() {
     document.getElementById('cat-delete-btn').style.display = 'none';
     onCatTypeChange();
     try { renderColorSwatches('cat', null); } catch(e) { console.warn('swatches error', e); }
-    try { populateCatAccountLink(); }        catch(e) { console.warn('accountlink error', e); }
+    try { populateCatAccountLink([]); }       catch(e) { console.warn('accountlink error', e); }
   } catch(e) { console.warn('openAddCategory error', e); }
   document.getElementById('modal-add-category').classList.add('open');
 }
@@ -2763,19 +2788,30 @@ function openEditCategory(id) {
   document.getElementById('cat-budget').value   = c.defaultBudget||0;
   document.getElementById('cat-delete-btn').style.display = 'inline-flex';
   onCatTypeChange();
-  try { renderColorSwatches('cat', c.color); }  catch(e) { console.warn('swatches error', e); }
-  try { populateCatAccountLink(c.accountId); }  catch(e) { console.warn('accountlink error', e); }
+  try { renderColorSwatches('cat', c.color); }                         catch(e) { console.warn('swatches error', e); }
+  try { populateCatAccountLink(c.accountIds || (c.accountId ? [c.accountId] : [])); } catch(e) { console.warn('accountlink error', e); }
   document.getElementById('modal-add-category').classList.add('open');
 }
 
-function populateCatAccountLink(selected) {
-  const sel = document.getElementById('cat-account-link');
-  sel.innerHTML = '<option value="">No account</option>';
-  state.financialAccounts.forEach(a=>{
-    const o=document.createElement('option'); o.value=a.id; o.textContent=`${a.icon} ${a.name}`;
-    if(a.id===selected) o.selected=true;
-    sel.appendChild(o);
-  });
+function populateCatAccountLink(selectedIds = []) {
+  const container = document.getElementById('cat-account-checkboxes');
+  if (!container) return;
+  const ids = Array.isArray(selectedIds) ? selectedIds : (selectedIds ? [selectedIds] : []);
+  const accounts = state.financialAccounts.filter(a => a.type === 'investment' || a.type === 'savings');
+  container.innerHTML = accounts.map(a => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:${ids.includes(a.id)?'var(--green-bg)':'var(--surface)'}">
+      <input type="checkbox" value="${a.id}" ${ids.includes(a.id)?'checked':''}
+        onchange="this.closest('label').style.background=this.checked?'var(--green-bg)':'var(--surface)'"
+        style="accent-color:var(--green);width:14px;height:14px;flex-shrink:0"/>
+      <span>${a.icon||'🏦'} ${a.name}</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto">${a.type}</span>
+    </label>
+  `).join('') || '<div style="color:var(--muted);font-size:12px;padding:4px">No investment or savings accounts defined yet.</div>';
+}
+
+function getSelectedCatAccountIds() {
+  const boxes = document.querySelectorAll('#cat-account-checkboxes input[type=checkbox]:checked');
+  return Array.from(boxes).map(b => b.value);
 }
 
 function renderColorSwatches(prefix, selected) {
@@ -2798,21 +2834,21 @@ function getSelectedSwatch(prefix) {
 }
 
 function saveCategory() {
-  const id     = document.getElementById('cat-edit-id').value;
-  const name   = document.getElementById('cat-name').value.trim();
-  const icon   = document.getElementById('cat-icon').value.trim() || '📦';
-  const type   = document.getElementById('cat-type').value;
-  const budget = parseFloat(document.getElementById('cat-budget').value)||0;
-  const acctId = document.getElementById('cat-account-link').value || undefined;
-  const color  = getSelectedSwatch('cat');
+  const id      = document.getElementById('cat-edit-id').value;
+  const name    = document.getElementById('cat-name').value.trim();
+  const icon    = document.getElementById('cat-icon').value.trim() || '📦';
+  const type    = document.getElementById('cat-type').value;
+  const budget  = parseFloat(document.getElementById('cat-budget').value)||0;
+  const color   = getSelectedSwatch('cat');
+  const acctIds = type === 'investment' ? getSelectedCatAccountIds() : [];
 
   if (!name) { showToast('Please enter a category name'); return; }
 
   if (id) {
     const idx = state.categories.findIndex(c=>c.id===id);
-    if (idx>-1) Object.assign(state.categories[idx], {name,icon,type,defaultBudget:budget,color,accountId:acctId});
+    if (idx>-1) Object.assign(state.categories[idx], {name,icon,type,defaultBudget:budget,color,accountIds:acctIds});
   } else {
-    state.categories.push({ id:'cat-'+Date.now(), name, icon, type, defaultBudget:budget, color, accountId:acctId });
+    state.categories.push({ id:'cat-'+Date.now(), name, icon, type, defaultBudget:budget, color, accountIds:acctIds });
   }
   closeModal('add-category');
   renderSettingsCategories();
