@@ -6,6 +6,7 @@
   <title>FamilyBudget</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -766,10 +767,19 @@
     </a>
   </nav>
   <div class="sidebar-bottom">
-    <div style="font-size:12px; color:var(--muted); padding: 0 2px;">
-      🔗 <span id="sheets-status" style="color:var(--amber)">Not connected</span>
+      <div style="font-size:12px;color:var(--muted);padding:0 2px;margin-bottom:10px">
+        🔗 <span id="sheets-status" style="color:var(--amber)">Not connected</span>
+      </div>
+      <button class="btn btn-ghost" id="sheets-connect-btn" onclick="sheetsConnect()"
+        style="width:100%;font-size:12px;padding:7px 10px;justify-content:center;display:flex;gap:6px;align-items:center">
+        <span>Connect Google Sheets</span>
+      </button>
+      <div id="sheets-spreadsheet-info" style="display:none;margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5">
+        <div id="sheets-spreadsheet-name" style="font-weight:500;color:var(--text)"></div>
+        <a id="sheets-spreadsheet-link" href="#" target="_blank"
+          style="color:var(--accent);text-decoration:none;font-size:11px">Open in Google Sheets ↗</a>
+      </div>
     </div>
-  </div>
 </aside>
 
 <!-- ── MAIN ── -->
@@ -1140,6 +1150,7 @@
           <button class="tab-btn active" id="stab-categories" onclick="switchSettingsTab('categories')">Categories</button>
           <button class="tab-btn" id="stab-recurring"   onclick="switchSettingsTab('recurring')">Recurring</button>
           <button class="tab-btn" id="stab-accounts"    onclick="switchSettingsTab('accounts')">Accounts</button>
+          <button class="tab-btn" id="stab-sheets"      onclick="switchSettingsTab('sheets')">Google Sheets</button>
         </div>
       </div>
     </header>
@@ -1234,10 +1245,75 @@
         </div>
       </div>
 
+      <!-- ── GOOGLE SHEETS TAB ── -->
+      <div id="stab-panel-sheets" style="display:none">
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px">Google Sheets Connection</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:24px">
+          Connect to a Google Spreadsheet to sync all your data in real time. The app will create and manage the sheet structure automatically.
+        </div>
+
+        <div class="section" style="margin-bottom:16px">
+          <div class="section-header"><div class="section-title">Step 1 — Google Cloud Setup</div></div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+            <div style="font-size:13px;color:var(--muted);line-height:1.8">
+              1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a><br>
+              2. Create a project → Enable the <strong>Google Sheets API</strong><br>
+              3. Go to <strong>APIs & Services → Credentials → Create OAuth 2.0 Client ID</strong> (Web Application)<br>
+              4. Add <code id="origin-display" style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px;font-family:'DM Mono',monospace"></code> as an Authorised JavaScript origin<br>
+              5. Copy the Client ID below
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">OAuth Client ID</label>
+              <div style="display:flex;gap:8px">
+                <input class="form-input" type="text" id="sheets-client-id"
+                  placeholder="xxxx.apps.googleusercontent.com"
+                  style="flex:1;font-family:'DM Mono',monospace;font-size:12px"/>
+                <button class="btn btn-ghost" onclick="saveClientId()">Save</button>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:5px">Stored in your browser only — never sent anywhere.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section" style="margin-bottom:16px">
+          <div class="section-header"><div class="section-title">Step 2 — Sign in with Google</div></div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+            <div style="font-size:13px;color:var(--muted)">Sign in and grant access to Google Sheets.</div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <button class="btn btn-primary" id="btn-sheets-signin" onclick="sheetsConnect()">Sign in with Google</button>
+              <button class="btn btn-ghost"   id="btn-sheets-signout" onclick="sheetsDisconnect()" style="display:none">Disconnect</button>
+            </div>
+            <div id="sheets-auth-status" style="font-size:12px;color:var(--muted)">Not signed in.</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header"><div class="section-title">Step 3 — Spreadsheet</div></div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px;align-items:flex-start">
+            <div style="font-size:13px;color:var(--muted)">
+              Leave blank to create a new spreadsheet automatically, or paste an existing Spreadsheet ID to connect to it.
+            </div>
+            <div class="form-group" style="margin:0;width:100%">
+              <label class="form-label">Spreadsheet ID (optional)</label>
+              <div style="display:flex;gap:8px">
+                <input class="form-input" type="text" id="sheets-spreadsheet-id"
+                  placeholder="Leave blank to create new…"
+                  style="flex:1;font-family:'DM Mono',monospace;font-size:12px"/>
+                <button class="btn btn-primary" id="btn-sheets-init" onclick="sheetsInitSpreadsheet()" disabled>Initialise</button>
+              </div>
+            </div>
+            <div id="sheets-init-status" style="font-size:12px;color:var(--muted)"></div>
+            <div id="sheets-sync-row" style="display:none;gap:10px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-primary" onclick="sheetsPushAll()">⬆ Push all data to Sheets</button>
+              <button class="btn btn-ghost"   onclick="sheetsPullAll()">⬇ Pull data from Sheets</button>
+              <span style="font-size:11px;color:var(--muted)" id="sheets-last-sync">Never synced</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
-
-<!-- ── ADD / EDIT CATEGORY MODAL ── -->
 <div class="modal-overlay" id="modal-add-category">
   <div class="modal">
     <div class="modal-title" id="cat-modal-title">Add Category</div>
@@ -1890,6 +1966,7 @@ function addTransaction() {
   document.getElementById('tx-desc').value = '';
   document.getElementById('tx-account-group').style.display = 'none';
   render();
+  autoSync();
   showToast('Transaction added ✓');
 }
 
@@ -1907,6 +1984,7 @@ function addIncome() {
   document.getElementById('inc-source').value = '';
   document.getElementById('inc-planned').value = '';
   render();
+  autoSync();
   showToast('Income entry added ✓');
 }
 
@@ -2123,6 +2201,7 @@ function saveEditTransaction() {
   };
   closeModal('edit-transaction');
   render();
+  autoSync();
   applyTxFilters();
   showToast('Transaction updated ✓');
 }
@@ -2132,6 +2211,7 @@ function deleteTransaction() {
   state.transactions = state.transactions.filter(t=>t.id!==id);
   closeModal('edit-transaction');
   render();
+  autoSync();
   applyTxFilters();
   showToast('Transaction deleted');
 }
@@ -2431,6 +2511,7 @@ function addMarketSnapshot() {
   document.getElementById('snap-value').value = '';
   document.getElementById('snap-note').value  = '';
   renderFinancialPosition();
+  autoSync();
   if (state.selectedFpAccount === accountId) renderFpDetail(accountId);
   showToast('Snapshot saved ✓');
 }
@@ -2448,10 +2529,16 @@ function initSettings() {
 }
 
 function switchSettingsTab(tab) {
-  ['categories','recurring','accounts'].forEach(t => {
+  ['categories','recurring','accounts','sheets'].forEach(t => {
     document.getElementById(`stab-${t}`).classList.toggle('active', t===tab);
     document.getElementById(`stab-panel-${t}`).style.display = t===tab ? 'block' : 'none';
   });
+  if (tab==='sheets') {
+    const od = document.getElementById('origin-display');
+    if (od) od.textContent = location.origin;
+    const saved = localStorage.getItem('fb_client_id');
+    if (saved) document.getElementById('sheets-client-id').value = saved;
+  }
 }
 
 // ── CATEGORIES ──
@@ -2789,7 +2876,6 @@ function deleteAccount() {
 }
 
 // Override openModal to handle settings-specific logic
-const _origOpenModal = openModal;
 function openModal(name) {
   if (name==='add-category') {
     if (!document.getElementById('cat-edit-id').value) openAddCategory(); else _origOpenModal(name);
@@ -3005,9 +3091,364 @@ function switchGridTab(tab) {
 }
 
 // ─────────────────────────────────────────────
+//  GOOGLE SHEETS INTEGRATION
+// ─────────────────────────────────────────────
+const SHEETS_SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+const SHEET_NAMES   = ['Transactions','Income','RecurringRules','BudgetConfig','Accounts','AccountEntries'];
+
+// Column headers per sheet
+const SHEET_HEADERS = {
+  Transactions:   ['id','date','amount','category','desc','recurring','accountId'],
+  Income:         ['id','date','source','actual','planned'],
+  RecurringRules: ['id','desc','amount','category','day','active','accountId'],
+  BudgetConfig:   ['id','name','icon','type','defaultBudget','color','accountId'],
+  Accounts:       ['id','name','icon','type','color'],
+  AccountEntries: ['id','date','accountId','type','amount','desc','sourceId'],
+};
+
+const gs = {
+  tokenClient: null,
+  accessToken: null,
+  spreadsheetId: null,
+  connected: false,
+};
+
+// ── Init on page load ──
+function initSheetsFromStorage() {
+  const clientId = localStorage.getItem('fb_client_id');
+  const ssId     = localStorage.getItem('fb_spreadsheet_id');
+  const token    = localStorage.getItem('fb_access_token');
+  const expiry   = parseInt(localStorage.getItem('fb_token_expiry')||'0');
+
+  if (clientId) document.getElementById('sheets-client-id').value = clientId;
+  if (ssId)     { gs.spreadsheetId = ssId; document.getElementById('sheets-spreadsheet-id').value = ssId; }
+
+  // Show origin
+  const od = document.getElementById('origin-display');
+  if (od) od.textContent = location.origin;
+
+  if (clientId && token && Date.now() < expiry) {
+    gs.accessToken = token;
+    gs.connected   = true;
+    updateSheetsUI(true);
+    loadGisClient(clientId);
+  } else if (clientId) {
+    loadGisClient(clientId);
+  }
+}
+
+function loadGisClient(clientId) {
+  if (!window.google?.accounts?.oauth2) {
+    // GIS not loaded yet — retry
+    setTimeout(() => loadGisClient(clientId), 500); return;
+  }
+  gs.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: SHEETS_SCOPES,
+    callback: (resp) => {
+      if (resp.error) { showToast('Google auth error: ' + resp.error); return; }
+      gs.accessToken = resp.access_token;
+      gs.connected   = true;
+      const expiry   = Date.now() + (resp.expires_in - 60) * 1000;
+      localStorage.setItem('fb_access_token', resp.access_token);
+      localStorage.setItem('fb_token_expiry',  String(expiry));
+      updateSheetsUI(true);
+      showToast('Connected to Google ✓');
+    },
+  });
+}
+
+function saveClientId() {
+  const id = document.getElementById('sheets-client-id').value.trim();
+  if (!id) { showToast('Please enter a Client ID'); return; }
+  localStorage.setItem('fb_client_id', id);
+  loadGisClient(id);
+  showToast('Client ID saved ✓');
+}
+
+function sheetsConnect() {
+  const clientId = localStorage.getItem('fb_client_id') || document.getElementById('sheets-client-id')?.value.trim();
+  if (!clientId) {
+    showToast('Please enter your OAuth Client ID in Settings → Google Sheets first');
+    showPage('settings');
+    switchSettingsTab('sheets');
+    return;
+  }
+  if (!gs.tokenClient) { loadGisClient(clientId); setTimeout(sheetsConnect, 600); return; }
+  gs.tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function sheetsDisconnect() {
+  if (gs.accessToken && window.google?.accounts?.oauth2) {
+    google.accounts.oauth2.revoke(gs.accessToken);
+  }
+  gs.accessToken = null; gs.connected = false; gs.spreadsheetId = null;
+  localStorage.removeItem('fb_access_token');
+  localStorage.removeItem('fb_token_expiry');
+  localStorage.removeItem('fb_spreadsheet_id');
+  updateSheetsUI(false);
+  showToast('Disconnected from Google Sheets');
+}
+
+function updateSheetsUI(connected) {
+  const status    = document.getElementById('sheets-status');
+  const connectBtn= document.getElementById('sheets-connect-btn');
+  const signinBtn = document.getElementById('btn-sheets-signin');
+  const signoutBtn= document.getElementById('btn-sheets-signout');
+  const authStatus= document.getElementById('sheets-auth-status');
+  const initBtn   = document.getElementById('btn-sheets-init');
+  const ssInfo    = document.getElementById('sheets-spreadsheet-info');
+
+  if (status) {
+    status.textContent = connected ? 'Connected' : 'Not connected';
+    status.style.color = connected ? 'var(--green)' : 'var(--amber)';
+  }
+  if (connectBtn) connectBtn.style.display = connected ? 'none' : 'flex';
+  if (signinBtn)  signinBtn.style.display  = connected ? 'none' : 'inline-flex';
+  if (signoutBtn) signoutBtn.style.display = connected ? 'inline-flex' : 'none';
+  if (authStatus) {
+    authStatus.textContent = connected ? '✅ Signed in successfully.' : 'Not signed in.';
+    authStatus.style.color = connected ? 'var(--green)' : 'var(--muted)';
+  }
+  if (initBtn) initBtn.disabled = !connected;
+
+  if (connected && gs.spreadsheetId) {
+    if (ssInfo) ssInfo.style.display = 'block';
+    const nameEl = document.getElementById('sheets-spreadsheet-name');
+    const linkEl = document.getElementById('sheets-spreadsheet-link');
+    if (nameEl) nameEl.textContent = 'familybudget';
+    if (linkEl) linkEl.href = `https://docs.google.com/spreadsheets/d/${gs.spreadsheetId}`;
+    const syncRow = document.getElementById('sheets-sync-row');
+    if (syncRow) syncRow.style.display = 'flex';
+  }
+}
+
+// ── Sheets API wrapper ──
+async function sheetsRequest(method, path, body) {
+  if (!gs.accessToken) throw new Error('Not authenticated');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${gs.accessToken}`,
+      'Content-Type':  'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err?.error?.message || `HTTP ${res.status}`);
+  }
+  return res.status === 204 ? {} : res.json();
+}
+
+// ── Initialise spreadsheet ──
+async function sheetsInitSpreadsheet() {
+  const statusEl = document.getElementById('sheets-init-status');
+  statusEl.textContent = '⏳ Initialising…';
+  try {
+    const existingId = document.getElementById('sheets-spreadsheet-id').value.trim();
+
+    if (existingId) {
+      // Use existing sheet
+      gs.spreadsheetId = existingId;
+      localStorage.setItem('fb_spreadsheet_id', existingId);
+      await ensureSheetTabs();
+      statusEl.textContent = '✅ Connected to existing spreadsheet.';
+    } else {
+      // Create new spreadsheet
+      const sheets = SHEET_NAMES.map(name => ({ properties: { title: name } }));
+      const resp = await sheetsRequest('POST', '', {
+        properties: { title: 'FamilyBudget' },
+        sheets,
+      });
+      gs.spreadsheetId = resp.spreadsheetId;
+      localStorage.setItem('fb_spreadsheet_id', gs.spreadsheetId);
+      await writeHeaders();
+      statusEl.textContent = '✅ New spreadsheet created successfully.';
+    }
+
+    updateSheetsUI(true);
+    showToast('Spreadsheet ready ✓');
+    await sheetsPushAll();
+  } catch(e) {
+    statusEl.textContent = '❌ Error: ' + e.message;
+    showToast('Error: ' + e.message);
+  }
+}
+
+async function ensureSheetTabs() {
+  const info    = await sheetsRequest('GET', `/${gs.spreadsheetId}?fields=sheets.properties.title`);
+  const existing= (info.sheets||[]).map(s=>s.properties.title);
+  const missing = SHEET_NAMES.filter(n=>!existing.includes(n));
+  if (!missing.length) return;
+  await sheetsRequest('POST', `/${gs.spreadsheetId}:batchUpdate`, {
+    requests: missing.map(title => ({ addSheet: { properties: { title } } }))
+  });
+  await writeHeaders();
+}
+
+async function writeHeaders() {
+  const data = SHEET_NAMES.map(name => ({
+    range: `${name}!A1`,
+    values: [SHEET_HEADERS[name]],
+  }));
+  await sheetsRequest('POST', `/${gs.spreadsheetId}/values:batchUpdate`, {
+    valueInputOption: 'RAW', data,
+  });
+}
+
+// ── Serialise state to rows ──
+function stateToRows() {
+  const rows = {};
+
+  rows.Transactions = state.transactions.map(t =>
+    [t.id, t.date, t.amount, t.category, t.desc, t.recurring||false, t.accountId||'']);
+
+  rows.Income = state.income.map(i =>
+    [i.id, i.date, i.source, i.actual, i.planned]);
+
+  rows.RecurringRules = state.recurringRules.map(r =>
+    [r.id, r.desc, r.amount, r.category, r.day, r.active, r.accountId||'']);
+
+  rows.BudgetConfig = state.categories.map(c =>
+    [c.id, c.name, c.icon, c.type, c.defaultBudget||0, c.color||'', c.accountId||'']);
+
+  rows.Accounts = state.financialAccounts.map(a =>
+    [a.id, a.name, a.icon, a.type, a.color||'']);
+
+  rows.AccountEntries = state.accountEntries.map(e =>
+    [e.id, e.date, e.accountId, e.type, e.amount, e.desc||'', e.sourceId||'']);
+
+  return rows;
+}
+
+// ── Push all data ──
+async function sheetsPushAll() {
+  if (!gs.connected || !gs.spreadsheetId) {
+    showToast('Not connected to Google Sheets'); return;
+  }
+  try {
+    showToast('Syncing to Sheets…');
+    const rows = stateToRows();
+    const data = SHEET_NAMES.map(name => ({
+      range: `${name}!A2`,
+      values: rows[name],
+    }));
+    // Clear existing data first
+    await sheetsRequest('POST', `/${gs.spreadsheetId}/values:batchClear`, {
+      ranges: SHEET_NAMES.map(n => `${n}!A2:Z10000`),
+    });
+    // Write new data
+    if (data.some(d=>d.values.length)) {
+      await sheetsRequest('POST', `/${gs.spreadsheetId}/values:batchUpdate`, {
+        valueInputOption: 'RAW',
+        data: data.filter(d=>d.values.length),
+      });
+    }
+    const now = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    const el  = document.getElementById('sheets-last-sync');
+    if (el) el.textContent = `Last pushed: ${now}`;
+    showToast('Data pushed to Sheets ✓');
+  } catch(e) {
+    showToast('Sync error: ' + e.message);
+  }
+}
+
+// ── Pull all data ──
+async function sheetsPullAll() {
+  if (!gs.connected || !gs.spreadsheetId) {
+    showToast('Not connected to Google Sheets'); return;
+  }
+  try {
+    showToast('Pulling from Sheets…');
+    const ranges = SHEET_NAMES.map(n => `${n}!A1:Z10000`);
+    const resp   = await sheetsRequest('GET',
+      `/${gs.spreadsheetId}/values:batchGet?ranges=${ranges.map(encodeURIComponent).join('&ranges=')}`);
+
+    const sheets = {};
+    (resp.valueRanges||[]).forEach(vr => {
+      const name  = vr.range.split('!')[0].replace(/'/g,'');
+      const rows  = (vr.values||[]).slice(1); // skip header
+      sheets[name] = rows;
+    });
+
+    // Parse Transactions
+    if (sheets.Transactions?.length) {
+      state.transactions = sheets.Transactions.map(r => ({
+        id: r[0], date: r[1], amount: parseFloat(r[2])||0,
+        category: r[3], desc: r[4],
+        recurring: r[5]==='TRUE'||r[5]===true,
+        accountId: r[6]||undefined,
+      }));
+    }
+    // Parse Income
+    if (sheets.Income?.length) {
+      state.income = sheets.Income.map(r => ({
+        id: r[0], date: r[1], source: r[2],
+        actual: parseFloat(r[3])||0, planned: parseFloat(r[4])||0,
+      }));
+    }
+    // Parse RecurringRules
+    if (sheets.RecurringRules?.length) {
+      state.recurringRules = sheets.RecurringRules.map(r => ({
+        id: r[0], desc: r[1], amount: parseFloat(r[2])||0,
+        category: r[3], day: parseInt(r[4])||1,
+        active: r[5]==='TRUE'||r[5]===true,
+        accountId: r[6]||undefined,
+      }));
+    }
+    // Parse BudgetConfig
+    if (sheets.BudgetConfig?.length) {
+      state.categories = sheets.BudgetConfig.map(r => ({
+        id: r[0], name: r[1], icon: r[2], type: r[3],
+        defaultBudget: parseFloat(r[4])||0, color: r[5]||'#F0F0F0',
+        accountId: r[6]||undefined,
+      }));
+    }
+    // Parse Accounts
+    if (sheets.Accounts?.length) {
+      state.financialAccounts = sheets.Accounts.map(r => ({
+        id: r[0], name: r[1], icon: r[2], type: r[3], color: r[4]||'#F0F0F0',
+      }));
+      state.accounts = state.financialAccounts
+        .filter(a=>a.type==='investment'||a.type==='savings')
+        .map(a=>({id:a.id,name:a.name,type:a.type}));
+    }
+    // Parse AccountEntries
+    if (sheets.AccountEntries?.length) {
+      state.accountEntries = sheets.AccountEntries.map(r => ({
+        id: r[0], date: r[1], accountId: r[2], type: r[3],
+        amount: parseFloat(r[4])||0, desc: r[5]||'',
+        sourceId: r[6]||undefined,
+      }));
+    }
+
+    const now = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    const el  = document.getElementById('sheets-last-sync');
+    if (el) el.textContent = `Last pulled: ${now}`;
+    render();
+    showToast('Data pulled from Sheets ✓');
+  } catch(e) {
+    showToast('Pull error: ' + e.message);
+  }
+}
+
+// ── Auto-push after any state change ──
+// Wrap the core data-mutating functions to auto-sync
+function autoSync() {
+  if (gs.connected && gs.spreadsheetId) {
+    // Debounce — wait 1.5s after last change before pushing
+    clearTimeout(gs._syncTimer);
+    gs._syncTimer = setTimeout(sheetsPushAll, 1500);
+  }
+}
+
+// ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
 render();
+initSheetsFromStorage();
 </script>
 </body>
 </html>
