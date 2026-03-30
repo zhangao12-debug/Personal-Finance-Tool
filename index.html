@@ -793,7 +793,6 @@
       <button onclick="changeMonth(1)">›</button>
     </div>
     <div class="topbar-actions">
-      <button class="btn btn-ghost" onclick="openModal('income')">+ Income</button>
       <button class="btn btn-primary" onclick="openModal('transaction')">+ Transaction</button>
     </div>
   </header>
@@ -969,7 +968,6 @@
     <header class="topbar">
       <div style="font-size:15px;font-weight:600;letter-spacing:-0.3px">Transaction Log</div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" onclick="openModal('income')">+ Income</button>
         <button class="btn btn-primary" onclick="openModal('transaction')">+ Transaction</button>
       </div>
     </header>
@@ -986,6 +984,11 @@
         <div class="tx-strip-item">
           <div class="tx-strip-label">Transactions</div>
           <div class="tx-strip-value" id="txlog-count">—</div>
+        </div>
+        <div class="tx-strip-divider"></div>
+        <div class="tx-strip-item">
+          <div class="tx-strip-label">Income</div>
+          <div class="tx-strip-value" style="color:var(--green)" id="txlog-income">—</div>
         </div>
         <div class="tx-strip-divider"></div>
         <div class="tx-strip-item">
@@ -1031,6 +1034,7 @@
           <span class="filter-label">Type</span>
           <select class="filter-select" id="f-type" onchange="applyTxFilters()">
             <option value="">All types</option>
+            <option value="income">Income</option>
             <option value="spending">Spending</option>
             <option value="investment">Investments</option>
           </select>
@@ -1577,6 +1581,7 @@
   <div class="modal">
     <div class="modal-title">Edit Transaction</div>
     <input type="hidden" id="edit-tx-id"/>
+    <input type="hidden" id="edit-tx-type"/>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Date</label>
@@ -1584,12 +1589,16 @@
       </div>
       <div class="form-group">
         <label class="form-label">Amount (€)</label>
-        <input class="form-input" type="number" id="edit-tx-amount" step="0.01"/>
+        <input class="form-input" type="number" id="edit-tx-amount" step="0.01" min="0"/>
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="edit-tx-expense-cat-group">
       <label class="form-label">Category</label>
       <select class="form-select" id="edit-tx-category" onchange="onEditCategoryChange()"></select>
+    </div>
+    <div class="form-group" id="edit-tx-income-cat-group" style="display:none">
+      <label class="form-label">Income Category</label>
+      <select class="form-select" id="edit-tx-income-category"></select>
     </div>
     <div class="form-group" id="edit-tx-account-group" style="display:none">
       <label class="form-label">Investment Account</label>
@@ -1598,6 +1607,13 @@
     <div class="form-group">
       <label class="form-label">Description</label>
       <input class="form-input" type="text" id="edit-tx-desc"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Recurring</label>
+      <select class="form-select" id="edit-tx-recurring">
+        <option value="false">One-off</option>
+        <option value="true">Recurring</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="delete-btn" onclick="deleteTransaction()">🗑 Delete</button>
@@ -1618,12 +1634,28 @@
       </div>
       <div class="form-group">
         <label class="form-label">Amount (€)</label>
-        <input class="form-input" type="number" id="tx-amount" placeholder="0.00" step="0.01"/>
+        <input class="form-input" type="number" id="tx-amount" placeholder="0.00" step="0.01" min="0"/>
       </div>
     </div>
     <div class="form-group">
+      <label class="form-label">Type</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="tx-type-btn-expense" onclick="setTxType('expense')"
+          class="btn btn-primary" style="flex:1;justify-content:center">💸 Expense</button>
+        <button type="button" id="tx-type-btn-income" onclick="setTxType('income')"
+          class="btn btn-ghost" style="flex:1;justify-content:center">💰 Income</button>
+      </div>
+      <input type="hidden" id="tx-type" value="expense"/>
+    </div>
+    <div class="form-group" id="tx-expense-category-group">
       <label class="form-label">Category</label>
       <select class="form-select" id="tx-category" onchange="onCategoryChange()">
+        <option value="">Select category…</option>
+      </select>
+    </div>
+    <div class="form-group" id="tx-income-category-group" style="display:none">
+      <label class="form-label">Income Category</label>
+      <select class="form-select" id="tx-income-category">
         <option value="">Select category…</option>
       </select>
     </div>
@@ -1637,9 +1669,16 @@
       <label class="form-label">Description</label>
       <input class="form-input" type="text" id="tx-desc" placeholder="e.g. Carrefour, EDF bill…"/>
     </div>
+    <div class="form-group">
+      <label class="form-label">Recurring</label>
+      <select class="form-select" id="tx-recurring">
+        <option value="false">One-off</option>
+        <option value="true">Recurring</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('transaction')">Cancel</button>
-      <button class="btn btn-primary" onclick="addTransaction()">Add Transaction</button>
+      <button class="btn btn-primary" onclick="addTransaction()">Add</button>
     </div>
   </div>
 </div>
@@ -2067,6 +2106,9 @@ function _origOpenModal(name) {
   if (name === 'transaction') {
     const today = new Date();
     document.getElementById('tx-date').value = today.toISOString().split('T')[0];
+    setTxType('expense');
+    populateCategoryDropdown();
+    populateTxIncomeCategoryDropdown();
   }
   if (name === 'income') {
     const today = new Date();
@@ -2079,31 +2121,91 @@ function closeModal(name) {
   document.getElementById(`modal-${name}`).classList.remove('open');
 }
 
+function setTxType(type) {
+  document.getElementById('tx-type').value = type;
+  const isIncome = type === 'income';
+  document.getElementById('tx-type-btn-income').className  = isIncome ? 'btn btn-primary' : 'btn btn-ghost';
+  document.getElementById('tx-type-btn-expense').className = isIncome ? 'btn btn-ghost'   : 'btn btn-primary';
+  document.getElementById('tx-expense-category-group').style.display = isIncome ? 'none'  : 'block';
+  document.getElementById('tx-income-category-group').style.display  = isIncome ? 'block' : 'none';
+  document.getElementById('tx-account-group').style.display = 'none';
+  if (isIncome) populateTxIncomeCategoryDropdown();
+}
+
+function populateTxIncomeCategoryDropdown() {
+  const sel = document.getElementById('tx-income-category');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select category…</option>' +
+    (state.incomeCategories||[]).map(c =>
+      `<option value="${c.id}">${c.icon||'💰'} ${c.name}</option>`
+    ).join('');
+}
+
 function addTransaction() {
-  const date   = document.getElementById('tx-date').value;
-  const amount = parseFloat(document.getElementById('tx-amount').value);
-  const cat    = document.getElementById('tx-category').value;
-  const desc   = document.getElementById('tx-desc').value;
-  const acct   = document.getElementById('tx-account').value;
+  const date      = document.getElementById('tx-date').value;
+  const amount    = parseFloat(document.getElementById('tx-amount').value);
+  const desc      = document.getElementById('tx-desc').value;
+  const txType    = document.getElementById('tx-type').value;
+  const recurring = document.getElementById('tx-recurring').value === 'true';
+  const isIncome  = txType === 'income';
 
-  if (!date || !amount || !cat) { showToast('Please fill all required fields'); return; }
+  if (!date || !amount) { showToast('Please fill date and amount'); return; }
 
-  const newTx = {
-    id: Date.now(),
-    date, amount, category: cat,
-    desc: desc || '—',
-    ...(acct ? { accountId: acct } : {})
-  };
-  state.transactions.push(newTx);
+  if (isIncome) {
+    const catId = document.getElementById('tx-income-category').value;
+    if (!catId) { showToast('Please select an income category'); return; }
+    const cat = (state.incomeCategories||[]).find(c=>c.id===catId);
+    const newTx = {
+      id: Date.now(), date,
+      amount,           // positive — income
+      txType: 'income',
+      categoryId: catId,
+      desc: desc || cat?.name || 'Income',
+      recurring,
+    };
+    state.transactions.push(newTx);
+    // Also sync to state.income for Monthly Budget view
+    state.income.push({
+      id: newTx.id, date,
+      source: desc || cat?.name || 'Income',
+      categoryId: catId,
+      actual:  amount,
+      planned: cat?.defaultPlanned || amount,
+    });
+  } else {
+    const cat  = document.getElementById('tx-category').value;
+    const acct = document.getElementById('tx-account').value;
+    if (!cat) { showToast('Please select a category'); return; }
+    const newTx = {
+      id: Date.now(), date, amount,
+      txType: 'expense',
+      category: cat,
+      desc: desc || '—',
+      recurring,
+      ...(acct ? { accountId: acct } : {})
+    };
+    state.transactions.push(newTx);
+    // Auto-create account entry if investment
+    if (acct) {
+      state.accountEntries.push({
+        id: Date.now()+1, date, accountId: acct,
+        type: 'transfer', amount, desc: desc||'Transfer',
+        sourceId: newTx.id,
+      });
+    }
+  }
+
   closeModal('transaction');
-  // Reset form
   document.getElementById('tx-amount').value = '';
   document.getElementById('tx-category').value = '';
+  document.getElementById('tx-income-category').value = '';
   document.getElementById('tx-desc').value = '';
+  document.getElementById('tx-recurring').value = 'false';
   document.getElementById('tx-account-group').style.display = 'none';
+  setTxType('expense');
   render();
   autoSync();
-  showToast('Transaction added ✓');
+  showToast(isIncome ? 'Income added ✓' : 'Transaction added ✓');
 }
 
 function addIncome() {
@@ -2155,19 +2257,23 @@ function initTxLog() {
   sel.innerHTML = '<option value="">All categories</option>';
   const spending = state.categories.filter(c=>c.type==='spending');
   const invest   = state.categories.filter(c=>c.type==='investment');
-  const og1 = document.createElement('optgroup'); og1.label = 'Spending';
-  spending.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.icon} ${c.name}`; og1.appendChild(o); });
-  const og2 = document.createElement('optgroup'); og2.label = 'Investments';
-  invest.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.icon} ${c.name}`; og2.appendChild(o); });
-  sel.appendChild(og1); sel.appendChild(og2);
+  const income   = state.incomeCategories || [];
 
-  // populate edit modal category + account dropdowns
+  const og0 = document.createElement('optgroup'); og0.label = 'Income';
+  income.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.icon||'💰'} ${c.name}`; og0.appendChild(o); });
+  const og1 = document.createElement('optgroup'); og1.label = 'Spending';
+  spending.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.icon||''} ${c.name}`; og1.appendChild(o); });
+  const og2 = document.createElement('optgroup'); og2.label = 'Investments';
+  invest.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=`${c.icon||''} ${c.name}`; og2.appendChild(o); });
+  sel.appendChild(og0); sel.appendChild(og1); sel.appendChild(og2);
+
+  // populate edit modal expense category dropdown
   const eSel = document.getElementById('edit-tx-category');
   eSel.innerHTML = '';
   const eog1 = document.createElement('optgroup'); eog1.label='Spending';
-  spending.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.icon} ${c.name}`;eog1.appendChild(o);});
+  spending.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.icon||''} ${c.name}`;eog1.appendChild(o);});
   const eog2 = document.createElement('optgroup'); eog2.label='Investments';
-  invest.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.icon} ${c.name}`;eog2.appendChild(o);});
+  invest.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.icon||''} ${c.name}`;eog2.appendChild(o);});
   eSel.appendChild(eog1); eSel.appendChild(eog2);
 
   const eAcct = document.getElementById('edit-tx-account');
@@ -2184,15 +2290,28 @@ function applyTxFilters() {
   const type  = document.getElementById('f-type').value;
   const q     = document.getElementById('f-search').value.toLowerCase().trim();
 
-  txLogState.filtered = state.transactions.filter(t => {
+  // Unified list: all transactions (expense + investment + income)
+  const all = state.transactions.map(t => {
+    const txType = t.txType || (state.categories.find(c=>c.id===t.category)?.type) || 'expense';
+    return { ...t, _type: txType };
+  });
+
+  txLogState.filtered = all.filter(t => {
     const d = new Date(t.date);
-    const tCat = state.categories.find(c=>c.id===t.category);
-    if (year  && d.getFullYear() !== parseInt(year))   return false;
-    if (month !== '' && d.getMonth() !== parseInt(month)) return false;
-    if (cat   && t.category !== cat)                    return false;
-    if (type  && tCat?.type !== type)                   return false;
-    if (q     && !t.desc.toLowerCase().includes(q) &&
-                 !tCat?.name.toLowerCase().includes(q)) return false;
+    if (year  && d.getFullYear() !== parseInt(year))       return false;
+    if (month !== '' && d.getMonth() !== parseInt(month))  return false;
+    if (type) {
+      if (type === 'income'     && t._type !== 'income')     return false;
+      if (type === 'spending'   && t._type !== 'spending')   return false;
+      if (type === 'investment' && t._type !== 'investment') return false;
+    }
+    if (cat && t.category !== cat && t.categoryId !== cat) return false;
+    if (q) {
+      const catName = t._type === 'income'
+        ? (state.incomeCategories||[]).find(c=>c.id===t.categoryId)?.name || ''
+        : state.categories.find(c=>c.id===t.category)?.name || '';
+      if (!t.desc?.toLowerCase().includes(q) && !catName.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
@@ -2234,11 +2353,14 @@ function renderTxLog() {
   const slice = filtered.slice(start, end);
 
   // Summary strip
-  const totalAmt  = filtered.reduce((s,t)=>s+t.amount,0);
-  const spendAmt  = filtered.filter(t=>state.categories.find(c=>c.id===t.category)?.type==='spending').reduce((s,t)=>s+t.amount,0);
-  const investAmt = filtered.filter(t=>state.categories.find(c=>c.id===t.category)?.type==='investment').reduce((s,t)=>s+t.amount,0);
-  document.getElementById('txlog-total').textContent  = fmt(totalAmt);
+  const incomeAmt = filtered.filter(t=>t._type==='income').reduce((s,t)=>s+t.amount,0);
+  const spendAmt  = filtered.filter(t=>t._type==='spending').reduce((s,t)=>s+t.amount,0);
+  const investAmt = filtered.filter(t=>t._type==='investment').reduce((s,t)=>s+t.amount,0);
+  const netAmt    = incomeAmt - spendAmt - investAmt;
+  document.getElementById('txlog-total').textContent  = (netAmt >= 0 ? '+' : '') + fmt(Math.abs(netAmt));
+  document.getElementById('txlog-total').style.color  = netAmt >= 0 ? 'var(--green)' : 'var(--red)';
   document.getElementById('txlog-count').textContent  = filtered.length;
+  document.getElementById('txlog-income').textContent = fmt(incomeAmt);
   document.getElementById('txlog-spend').textContent  = fmt(spendAmt);
   document.getElementById('txlog-invest').textContent = fmt(investAmt);
 
@@ -2251,27 +2373,44 @@ function renderTxLog() {
   } else {
     emptyEl.style.display = 'none';
     listEl.innerHTML = slice.map(t => {
-      const d    = new Date(t.date);
+      const d       = new Date(t.date);
       const dateStr = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
-      const cat  = state.categories.find(c=>c.id===t.category);
-      const isRec = t.recurring;
-      const isInv = cat?.type==='investment';
-      const recTag  = isRec ? '<span class="recurring-tag">🔁 auto</span>' : '';
-      const invTag  = isInv ? '<span class="recurring-tag">💼</span>' : '';
-      const typeBadge = isInv
-        ? `<span class="badge badge-blue">Investment</span>`
-        : `<span class="badge" style="background:${cat?.color||'var(--bg)'};color:var(--text)">${cat?.icon||''} Spending</span>`;
+      const isIncome = t._type === 'income';
+      const recTag   = t.recurring ? '<span class="recurring-tag">🔁 auto</span>' : '';
+
+      let catName, catIcon, catColor, typeBadge, amountHtml;
+
+      if (isIncome) {
+        const iCat = (state.incomeCategories||[]).find(c=>c.id===t.categoryId);
+        catName  = iCat?.name  || 'Income';
+        catIcon  = iCat?.icon  || '💰';
+        catColor = iCat?.color || '#DCFCE7';
+        typeBadge   = `<span class="badge badge-green">Income</span>`;
+        amountHtml  = `<div class="txlog-amount" style="color:var(--green)">+${fmt(t.amount)}</div>`;
+      } else {
+        const cat  = state.categories.find(c=>c.id===t.category);
+        const isInv = cat?.type === 'investment';
+        catName  = cat?.name  || t.category || '—';
+        catIcon  = cat?.icon  || '';
+        catColor = cat?.color || 'var(--bg)';
+        const invTag = isInv ? '<span class="recurring-tag">💼</span>' : '';
+        typeBadge   = isInv
+          ? `<span class="badge badge-blue">Investment</span>`
+          : `<span class="badge" style="background:${catColor};color:var(--text)">${catIcon} Spending</span>`;
+        amountHtml  = `<div class="txlog-amount">−${fmt(t.amount)}</div>`;
+        if (isInv && t.accountId) catName += ' → ' + (state.accounts.find(a=>a.id===t.accountId)?.name||'');
+      }
+
       return `<div class="txlog-row">
         <div class="txlog-date">${dateStr}</div>
         <div>
-          <div class="txlog-desc">${t.desc}${recTag}${invTag}</div>
-          <div class="txlog-sub">${cat?.name||t.category}${isInv&&t.accountId?' → '+state.accounts.find(a=>a.id===t.accountId)?.name:''}
-          </div>
+          <div class="txlog-desc">${t.desc||'—'}${recTag}</div>
+          <div class="txlog-sub">${catName}</div>
         </div>
         <div>
-          <span class="badge" style="background:${cat?.color||'var(--bg)'};color:var(--muted);font-size:11px">${cat?.icon||''} ${cat?.name||''}</span>
+          <span class="badge" style="background:${catColor};color:var(--muted);font-size:11px">${catIcon} ${catName}</span>
         </div>
-        <div class="txlog-amount">${fmt(t.amount)}</div>
+        ${amountHtml}
         <div>${typeBadge}</div>
         <div style="text-align:right"><button class="txlog-edit-btn" onclick="openEditTx('${t.id}')" title="Edit">✏️</button></div>
       </div>`;
@@ -2305,17 +2444,37 @@ function clearTxFilters() {
 function openEditTx(id) {
   const t = state.transactions.find(tx => String(tx.id) === String(id));
   if (!t) return;
-  document.getElementById('edit-tx-id').value     = id;
-  document.getElementById('edit-tx-date').value   = t.date;
+  const isIncome = t.txType === 'income';
+  document.getElementById('edit-tx-id').value        = id;
+  document.getElementById('edit-tx-type').value      = isIncome ? 'income' : 'expense';
+  document.getElementById('edit-tx-date').value      = t.date;
   document.getElementById('edit-tx-amount').value    = t.amount;
-  document.getElementById('edit-tx-category').value  = t.category;
-  document.getElementById('edit-tx-desc').value      = t.desc;
-  const cat   = state.categories.find(c=>c.id===t.category);
-  const isInv = cat?.type==='investment';
-  document.getElementById('edit-tx-account-group').style.display = isInv ? 'block' : 'none';
-  if (isInv) {
-    populateEditTxAccountDropdown(cat, t.accountId);
+  document.getElementById('edit-tx-desc').value      = t.desc || '';
+  document.getElementById('edit-tx-recurring').value = t.recurring ? 'true' : 'false';
+
+  // Show/hide correct category group
+  document.getElementById('edit-tx-expense-cat-group').style.display = isIncome ? 'none'  : 'block';
+  document.getElementById('edit-tx-income-cat-group').style.display  = isIncome ? 'block' : 'none';
+  document.getElementById('edit-tx-account-group').style.display     = 'none';
+
+  if (isIncome) {
+    // Populate income category dropdown
+    const incSel = document.getElementById('edit-tx-income-category');
+    incSel.innerHTML = (state.incomeCategories||[]).map(c =>
+      `<option value="${c.id}" ${c.id===t.categoryId?'selected':''}>${c.icon||'💰'} ${c.name}</option>`
+    ).join('');
+  } else {
+    // Populate expense category dropdown
+    const expSel = document.getElementById('edit-tx-category');
+    expSel.innerHTML = state.categories.map(c =>
+      `<option value="${c.id}" ${c.id===t.category?'selected':''}>${c.icon||''} ${c.name}</option>`
+    ).join('');
+    const cat   = state.categories.find(c=>c.id===t.category);
+    const isInv = cat?.type==='investment';
+    document.getElementById('edit-tx-account-group').style.display = isInv ? 'block' : 'none';
+    if (isInv) populateEditTxAccountDropdown(cat, t.accountId);
   }
+
   document.getElementById('modal-edit-transaction').classList.add('open');
 }
 
@@ -2339,17 +2498,39 @@ function onEditCategoryChange() {
 }
 
 function saveEditTransaction() {
-  const id  = document.getElementById('edit-tx-id').value;
-  const idx = state.transactions.findIndex(t => String(t.id) === String(id));
-  if (idx===-1) return;
-  state.transactions[idx] = {
-    ...state.transactions[idx],
-    date:     document.getElementById('edit-tx-date').value,
-    amount:   parseFloat(document.getElementById('edit-tx-amount').value),
-    category: document.getElementById('edit-tx-category').value,
-    desc:     document.getElementById('edit-tx-desc').value,
-    accountId: document.getElementById('edit-tx-account').value || undefined,
-  };
+  const id       = document.getElementById('edit-tx-id').value;
+  const txType   = document.getElementById('edit-tx-type').value;
+  const idx      = state.transactions.findIndex(t => String(t.id) === String(id));
+  if (idx === -1) return;
+
+  const date      = document.getElementById('edit-tx-date').value;
+  const amount    = parseFloat(document.getElementById('edit-tx-amount').value);
+  const desc      = document.getElementById('edit-tx-desc').value;
+  const recurring = document.getElementById('edit-tx-recurring').value === 'true';
+
+  if (txType === 'income') {
+    const categoryId = document.getElementById('edit-tx-income-category').value;
+    state.transactions[idx] = {
+      ...state.transactions[idx],
+      date, amount, desc, recurring, categoryId, txType: 'income',
+    };
+    // Sync to state.income
+    const incIdx = state.income.findIndex(i => String(i.id) === String(id));
+    const cat = (state.incomeCategories||[]).find(c=>c.id===categoryId);
+    if (incIdx > -1) {
+      state.income[incIdx] = { ...state.income[incIdx], date, actual: amount, source: desc, categoryId };
+    } else {
+      state.income.push({ id, date, source: desc, categoryId, actual: amount, planned: cat?.defaultPlanned||amount });
+    }
+  } else {
+    const category  = document.getElementById('edit-tx-category').value;
+    const accountId = document.getElementById('edit-tx-account').value || undefined;
+    state.transactions[idx] = {
+      ...state.transactions[idx],
+      date, amount, desc, recurring, category, accountId, txType: 'expense',
+    };
+  }
+
   closeModal('edit-transaction');
   render();
   autoSync();
@@ -2359,7 +2540,12 @@ function saveEditTransaction() {
 
 function deleteTransaction() {
   const id = document.getElementById('edit-tx-id').value;
+  const tx = state.transactions.find(t => String(t.id) === String(id));
   state.transactions = state.transactions.filter(t => String(t.id) !== String(id));
+  // If income, also remove from state.income
+  if (tx?.txType === 'income') {
+    state.income = state.income.filter(i => String(i.id) !== String(id));
+  }
   closeModal('edit-transaction');
   render();
   autoSync();
@@ -3858,16 +4044,38 @@ function autoSync() {
 async function init() {
   // 1. Load localStorage as immediate fallback
   loadStateFromLocal();
+
+  // 2. Migrate existing state.income entries into state.transactions if not already there
+  migrateIncomeToTransactions();
+
   render();
 
-  // 2. Init Google auth from stored credentials
+  // 3. Init Google auth from stored credentials
   await initSheetsFromStorage();
 
-  // 3. If already connected to Sheets, pull latest data
+  // 4. If already connected to Sheets, pull latest data
   if (gs.connected && gs.spreadsheetId) {
     showToast('Loading data from Google Sheets…');
     await sheetsPullAll();
   }
+}
+
+function migrateIncomeToTransactions() {
+  // Ensure all state.income entries have a corresponding transaction with txType:'income'
+  const existingIds = new Set(state.transactions.map(t=>String(t.id)));
+  (state.income||[]).forEach(i => {
+    if (!existingIds.has(String(i.id))) {
+      state.transactions.push({
+        id:         i.id,
+        date:       i.date,
+        amount:     i.actual,
+        txType:     'income',
+        categoryId: i.categoryId || '',
+        desc:       i.source || 'Income',
+        recurring:  false,
+      });
+    }
+  });
 }
 
 init();
