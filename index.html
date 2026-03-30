@@ -740,7 +740,50 @@
 </head>
 <body>
 
-<!-- ── SIDEBAR ── -->
+<!-- ── LOCK SCREEN ── -->
+<div id="lock-screen" style="
+  position:fixed;inset:0;z-index:9999;
+  background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Sans',sans-serif;
+">
+  <div style="
+    background:var(--surface);border-radius:16px;
+    padding:40px 36px;width:100%;max-width:380px;
+    box-shadow:0 4px 40px rgba(0,0,0,0.10);
+    display:flex;flex-direction:column;gap:20px;
+  ">
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:700;letter-spacing:-0.5px;color:var(--text)">
+        family<span style="color:var(--accent)">budget</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px">Enter your password to continue</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input
+        id="lock-password"
+        type="password"
+        placeholder="Password"
+        class="form-input"
+        style="font-size:15px;padding:12px 14px;letter-spacing:2px"
+        onkeydown="if(event.key==='Enter') tryUnlock()"
+        autocomplete="current-password"
+      />
+      <div id="lock-error" style="font-size:12px;color:var(--red);min-height:16px;text-align:center"></div>
+      <button class="btn btn-primary" onclick="tryUnlock()" style="width:100%;justify-content:center;padding:12px">
+        Unlock
+      </button>
+    </div>
+    <div id="lock-setup" style="display:none;border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:12px;color:var(--muted);text-align:center">No password set yet. Create one to protect your app.</div>
+      <input id="lock-new-pw"    type="password" placeholder="New password"     class="form-input" style="font-size:14px"/>
+      <input id="lock-confirm-pw" type="password" placeholder="Confirm password" class="form-input" style="font-size:14px"/>
+      <button class="btn btn-primary" onclick="setPassword()" style="width:100%;justify-content:center">Set Password</button>
+    </div>
+  </div>
+</div>
+
+
 <aside class="sidebar">
   <div class="sidebar-logo">
     <div class="logo-mark">family<span>budget</span></div>
@@ -778,6 +821,16 @@
         <div id="sheets-spreadsheet-name" style="font-weight:500;color:var(--text)"></div>
         <a id="sheets-spreadsheet-link" href="#" target="_blank"
           style="color:var(--accent);text-decoration:none;font-size:11px">Open in Google Sheets ↗</a>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;gap:6px">
+        <button class="btn btn-ghost" onclick="lockApp()"
+          style="flex:1;font-size:11px;padding:6px 8px;justify-content:center">
+          🔒 Lock
+        </button>
+        <button class="btn btn-ghost" onclick="changePassword()"
+          style="flex:1;font-size:11px;padding:6px 8px;justify-content:center">
+          🔑 Change PW
+        </button>
       </div>
     </div>
 </aside>
@@ -1249,6 +1302,7 @@
       </div>
 
       <!-- ── RECURRING TAB ── -->
+      <div id="stab-panel-recurring" style="display:none">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
           <div>
             <div style="font-size:15px;font-weight:600">Recurring Transactions</div>
@@ -4009,8 +4063,89 @@ async function sheetsPullAll() {
 }
 
 // ─────────────────────────────────────────────
-//  LOCAL STORAGE PERSISTENCE
+//  AUTHENTICATION
 // ─────────────────────────────────────────────
+
+const AUTH_KEY    = 'fb_pw_hash';
+const SESSION_KEY = 'fb_session';
+const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+async function hashPassword(pw) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function initAuth() {
+  const storedHash = localStorage.getItem(AUTH_KEY);
+  const lock = document.getElementById('lock-screen');
+
+  // Check active session
+  const session = localStorage.getItem(SESSION_KEY);
+  if (session && Date.now() < parseInt(session)) {
+    lock.style.display = 'none';
+    return; // already authenticated
+  }
+
+  // No password set yet — show setup UI
+  if (!storedHash) {
+    document.getElementById('lock-setup').style.display = 'flex';
+    document.querySelector('#lock-screen input').style.display = 'none';
+    document.querySelector('#lock-screen .btn-primary').style.display = 'none';
+    document.querySelector('#lock-screen [style*="Enter your password"]').textContent = 'Set a password to protect your app.';
+    return;
+  }
+
+  // Password exists — show unlock UI
+  lock.style.display = 'flex';
+  setTimeout(() => document.getElementById('lock-password').focus(), 100);
+}
+
+async function tryUnlock() {
+  const pw   = document.getElementById('lock-password').value;
+  const errEl = document.getElementById('lock-error');
+  if (!pw) { errEl.textContent = 'Please enter your password.'; return; }
+
+  const hash   = await hashPassword(pw);
+  const stored = localStorage.getItem(AUTH_KEY);
+
+  if (hash === stored) {
+    localStorage.setItem(SESSION_KEY, String(Date.now() + SESSION_TTL));
+    document.getElementById('lock-screen').style.display = 'none';
+    errEl.textContent = '';
+  } else {
+    errEl.textContent = 'Incorrect password. Please try again.';
+    document.getElementById('lock-password').value = '';
+    document.getElementById('lock-password').focus();
+  }
+}
+
+async function setPassword() {
+  const pw1 = document.getElementById('lock-new-pw').value;
+  const pw2 = document.getElementById('lock-confirm-pw').value;
+  if (!pw1)        { showToast('Please enter a password'); return; }
+  if (pw1 !== pw2) { showToast('Passwords do not match');  return; }
+  if (pw1.length < 4) { showToast('Password must be at least 4 characters'); return; }
+
+  const hash = await hashPassword(pw1);
+  localStorage.setItem(AUTH_KEY, hash);
+  localStorage.setItem(SESSION_KEY, String(Date.now() + SESSION_TTL));
+  document.getElementById('lock-screen').style.display = 'none';
+  showToast('Password set ✓ You are now logged in.');
+}
+
+function lockApp() {
+  localStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+
+function changePassword() {
+  // Clear hash so setup UI appears on next reload
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+
+
 
 const PERSIST_KEYS = [
   'categories', 'incomeCategories', 'recurringIncome',
@@ -4068,6 +4203,9 @@ function clearLocalAndPull() {
 }
 
 async function init() {
+  // 0. Auth — show lock screen if no active session
+  await initAuth();
+
   // 1. Load localStorage as immediate fallback so UI appears instantly
   loadStateFromLocal();
   migrateIncomeToTransactions();
