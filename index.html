@@ -4054,7 +4054,9 @@ async function sheetsPullAll() {
     const el  = document.getElementById('sheets-last-sync');
     if (el) el.textContent = `Last pulled: ${now}`;
     migrateIncomeToTransactions();
-    saveStateToLocal(); // Sheets data is now the authoritative local cache
+    const created = postRecurringTransactions();
+    saveStateToLocal(); // Sheets data + any new recurring entries become new local cache
+    if (created > 0) sheetsPushAll(true); // silently push the new recurring entries back
     render();
     showToast('Data pulled from Sheets ✓');
   } catch(e) {
@@ -4209,15 +4211,20 @@ async function init() {
   // 1. Load localStorage as immediate fallback so UI appears instantly
   loadStateFromLocal();
   migrateIncomeToTransactions();
+
+  // 2. Auto-post any due recurring transactions
+  const created = postRecurringTransactions();
+  if (created > 0) saveStateToLocal();
+
   render();
 
-  // 2. Init Google auth
+  // 3. Init Google auth
   await initSheetsFromStorage();
 
-  // 3. If connected to Sheets, pull fresh data — Sheets always wins over localStorage
+  // 4. If connected to Sheets, pull fresh data — Sheets always wins over localStorage
   if (gs.connected && gs.spreadsheetId) {
     showToast('Loading data from Google Sheets…');
-    await sheetsPullAll();   // sheetsPullAll calls render() and saveStateToLocal() after pulling
+    await sheetsPullAll();
   }
 }
 
@@ -4237,6 +4244,152 @@ function migrateIncomeToTransactions() {
       });
     }
   });
+}
+
+// ─────────────────────────────────────────────
+//  RECURRING AUTO-POST
+//  Runs on load. For every active rule, checks
+//  all months from the rule's first expected
+//  date up to today. Creates a transaction for
+//  any month where none exists yet.
+// ─────────────────────────────────────────────
+function postRecurringTransactions() {
+  const today     = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth= today.getMonth();
+  const todayDay  = today.getDate();
+  let   created   = 0;
+
+  // ── Recurring expenses / investments ──
+  (state.recurringRules||[]).filter(r=>r.active).forEach(r => {
+    // Find the earliest transaction for this rule to know when it started
+    const existing = state.transactions.filter(t =>
+      t.recurring && t.category === r.category &&
+      Math.abs(t.amount - r.amount) < 0.01
+    );
+
+    // Determine start month: earliest existing transaction or current month
+    let startYear, startMonth;
+    if (existing.length) {
+      const dates = existing.map(t => new Date(t.date));
+      const min   = new Date(Math.min(...dates));
+      startYear   = min.getFullYear();
+      startMonth  = min.getMonth();
+    } else {
+      startYear  = todayYear;
+      startMonth = todayMonth;
+    }
+
+    // Walk every month from start up to today
+    for (let y = startYear; y <= todayYear; y++) {
+      const mStart = (y === startYear) ? startMonth : 0;
+      const mEnd   = (y === todayYear) ? todayMonth : 11;
+      for (let m = mStart; m <= mEnd; m++) {
+        // Only post if the rule's day has passed this month
+        const ruleDay = Math.min(r.day, new Date(y, m+1, 0).getDate()); // clamp to month end
+        if (y === todayYear && m === todayMonth && todayDay < ruleDay) continue;
+
+        // Check if a matching transaction already exists for this month
+        const alreadyExists = state.transactions.some(t => {
+          const d = new Date(t.date);
+          return t.recurring &&
+                 t.category === r.category &&
+                 Math.abs(t.amount - r.amount) < 0.01 &&
+                 d.getFullYear() === y && d.getMonth() === m;
+        });
+        if (alreadyExists) continue;
+
+        // Create the transaction
+        const date  = `${y}-${String(m+1).padStart(2,'0')}-${String(ruleDay).padStart(2,'0')}`;
+        const newTx = {
+          id:        `rec-${r.id}-${y}-${m}`,
+          date, amount: r.amount,
+          category:  r.category,
+          desc:      r.desc,
+          recurring: true,
+          txType:    'expense',
+          ...(r.accountId ? { accountId: r.accountId } : {}),
+        };
+        state.transactions.push(newTx);
+
+        // Auto-create account entry if investment
+        if (r.accountId) {
+          state.accountEntries.push({
+            id:        `rae-${r.id}-${y}-${m}`,
+            date, accountId: r.accountId,
+            type:      'transfer',
+            amount:    r.amount,
+            desc:      r.desc,
+            sourceId:  newTx.id,
+          });
+        }
+        created++;
+      }
+    }
+  });
+
+  // ── Recurring income ──
+  (state.recurringIncome||[]).filter(r=>r.active).forEach(r => {
+    const existing = state.transactions.filter(t =>
+      t.recurring && t.txType === 'income' &&
+      t.categoryId === r.categoryId &&
+      Math.abs(t.amount - r.amount) < 0.01
+    );
+
+    let startYear, startMonth;
+    if (existing.length) {
+      const dates = existing.map(t => new Date(t.date));
+      const min   = new Date(Math.min(...dates));
+      startYear   = min.getFullYear();
+      startMonth  = min.getMonth();
+    } else {
+      startYear  = todayYear;
+      startMonth = todayMonth;
+    }
+
+    for (let y = startYear; y <= todayYear; y++) {
+      const mStart = (y === startYear) ? startMonth : 0;
+      const mEnd   = (y === todayYear) ? todayMonth : 11;
+      for (let m = mStart; m <= mEnd; m++) {
+        const ruleDay = Math.min(r.day, new Date(y, m+1, 0).getDate());
+        if (y === todayYear && m === todayMonth && todayDay < ruleDay) continue;
+
+        const alreadyExists = state.transactions.some(t => {
+          const d = new Date(t.date);
+          return t.recurring && t.txType === 'income' &&
+                 t.categoryId === r.categoryId &&
+                 Math.abs(t.amount - r.amount) < 0.01 &&
+                 d.getFullYear() === y && d.getMonth() === m;
+        });
+        if (alreadyExists) continue;
+
+        const date  = `${y}-${String(m+1).padStart(2,'0')}-${String(ruleDay).padStart(2,'0')}`;
+        const newTx = {
+          id:         `reci-${r.id}-${y}-${m}`,
+          date, amount: r.amount,
+          txType:     'income',
+          categoryId: r.categoryId,
+          desc:       r.desc,
+          recurring:  true,
+        };
+        state.transactions.push(newTx);
+        // Sync to state.income
+        state.income.push({
+          id:         newTx.id,
+          date, source: r.desc,
+          categoryId: r.categoryId,
+          actual:     r.amount,
+          planned:    r.amount,
+        });
+        created++;
+      }
+    }
+  });
+
+  if (created > 0) {
+    console.log(`Auto-posted ${created} recurring transaction(s)`);
+  }
+  return created;
 }
 
 init();
