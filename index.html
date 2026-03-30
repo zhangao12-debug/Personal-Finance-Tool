@@ -1357,6 +1357,19 @@
             </div>
           </div>
         </div>
+
+        <div class="section" style="margin-top:16px">
+          <div class="section-header"><div class="section-title">Local Data</div></div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+            <div style="font-size:13px;color:var(--muted);line-height:1.6">
+              The app caches data locally in your browser for fast loading. If your app is showing old or example data, clear the local cache and reload fresh from Google Sheets.
+            </div>
+            <button class="btn btn-ghost" onclick="clearLocalAndPull()"
+              style="border-color:var(--red);color:var(--red)">
+              🗑 Clear local data &amp; reload from Sheets
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -3986,6 +3999,8 @@ async function sheetsPullAll() {
     const now = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
     const el  = document.getElementById('sheets-last-sync');
     if (el) el.textContent = `Last pulled: ${now}`;
+    migrateIncomeToTransactions();
+    saveStateToLocal(); // Sheets data is now the authoritative local cache
     render();
     showToast('Data pulled from Sheets ✓');
   } catch(e) {
@@ -4041,22 +4056,30 @@ function autoSync() {
 // ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
+function clearLocalAndPull() {
+  if (!gs.connected || !gs.spreadsheetId) {
+    showToast('Not connected to Google Sheets — please connect first');
+    return;
+  }
+  if (!confirm('This will clear all locally cached data and reload everything from Google Sheets. Continue?')) return;
+  localStorage.removeItem('fb_state');
+  showToast('Local cache cleared — pulling from Sheets…');
+  sheetsPullAll();
+}
+
 async function init() {
-  // 1. Load localStorage as immediate fallback
+  // 1. Load localStorage as immediate fallback so UI appears instantly
   loadStateFromLocal();
-
-  // 2. Migrate existing state.income entries into state.transactions if not already there
   migrateIncomeToTransactions();
-
   render();
 
-  // 3. Init Google auth from stored credentials
+  // 2. Init Google auth
   await initSheetsFromStorage();
 
-  // 4. If already connected to Sheets, pull latest data
+  // 3. If connected to Sheets, pull fresh data — Sheets always wins over localStorage
   if (gs.connected && gs.spreadsheetId) {
     showToast('Loading data from Google Sheets…');
-    await sheetsPullAll();
+    await sheetsPullAll();   // sheetsPullAll calls render() and saveStateToLocal() after pulling
   }
 }
 
